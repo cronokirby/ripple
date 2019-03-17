@@ -32,11 +32,11 @@ contact the peer, i.e. should include a port as well.
 | Length i  | 1      | Unsigned byte, how long the following field is |
 | Addr i    | Length i | A UTF-8 string containing the ith peer's address |
 
-## Message
+## NewMessage
 Once again we prefix the message string with its length
 
 | Field     | Length | Description           |
 | --------- | ------ | --------------------- |
-| Type      | 1      | 0x04 for Message      |
+| Type      | 1      | 0x04 for NewMessage      |
 | Length    | 4      | Unsigned 32 bit integer, length of following field |
 | Content   | Length | UTF-8 string with message content |
