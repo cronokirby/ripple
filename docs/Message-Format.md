@@ -2,6 +2,8 @@
 # Message Format
 This doc provides the binary specification of the messages used in the ripple protocol.
 
+All integers are in network order.
+
 ## Ping
 The Ping message contains no information, so it only has a type tag.
 

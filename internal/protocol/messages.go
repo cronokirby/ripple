@@ -49,6 +49,7 @@ type newMessage struct {
 }
 
 func (req newMessage) messageBytes() []byte {
-	acc := []byte{4, byte(len(req.content))}
+	l := len(req.content)
+	acc := []byte{4, byte(l >> 24), byte(l >> 16), byte(l >> 8), byte(l)}
 	return append(acc, []byte(req.content)...)
 }
