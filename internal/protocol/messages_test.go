@@ -46,7 +46,29 @@ func TestNewMessageMessageBytes(t *testing.T) {
 	}
 }
 
-func TestJoinResponeRoundTrip(t *testing.T) {
+func TestPingParsing(t *testing.T) {
+	msg, err := ReadMessage(bytes.NewReader([]byte{1}))
+	if err != nil {
+		t.Fatalf("Parsing failed: %v", err)
+	}
+	expected := ping{}
+	if msg.(ping) != expected {
+		t.Errorf("Expected %v got %v", expected, msg)
+	}
+}
+
+func TestJoinRequestParsing(t *testing.T) {
+	msg, err := ReadMessage(bytes.NewReader([]byte{2}))
+	if err != nil {
+		t.Fatalf("Parsing failed: %v", err)
+	}
+	expected := joinRequest{}
+	if msg.(joinRequest) != expected {
+		t.Errorf("Expected %v got %v", expected, msg)
+	}
+}
+
+func TestJoinResponseRoundTrip(t *testing.T) {
 	r := joinResponse{
 		peers: []net.Addr{
 			&net.IPAddr{IP: net.ParseIP("0.0.0.0")},
@@ -58,10 +80,36 @@ func TestJoinResponeRoundTrip(t *testing.T) {
 	fmt.Println(len(r.MessageBytes()))
 	roundTrip, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
 	if err != nil {
-		t.Errorf("Parsing failed: %v", err)
-		return
+		t.Fatalf("Parsing failed: %v", err)
 	}
 	if !reflect.DeepEqual(roundTrip.(joinResponse), r) {
+		t.Errorf("Expected %v got %v", r, roundTrip)
+	}
+}
+
+func TestJoinResponseRoundTripBig(t *testing.T) {
+	ip := net.ParseIP("101.101.101.101")
+	peers := make([]net.Addr, 100)
+	for i := 0; i < 100; i++ {
+		peers[i] = &net.IPAddr{IP: ip}
+	}
+	r := joinResponse{peers}
+	roundTrip, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
+	if err != nil {
+		t.Fatalf("Parsing failed: %v", err)
+	}
+	if !reflect.DeepEqual(roundTrip.(joinResponse), r) {
+		t.Errorf("Expected %v got %v", r, roundTrip)
+	}
+}
+
+func TestNewMessageRoundTrip(t *testing.T) {
+	r := newMessage{content: "Hello World!"}
+	roundTrip, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
+	if err != nil {
+		t.Fatalf("Parsing failed: %v", err)
+	}
+	if !reflect.DeepEqual(roundTrip.(newMessage), r) {
 		t.Errorf("Expected %v got %v", r, roundTrip)
 	}
 }
