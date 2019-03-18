@@ -95,6 +95,7 @@ func ReadMessage(r io.Reader) (Message, error) {
 			}
 			addrString := string(slice[:length])
 			peers = append(peers, &net.IPAddr{IP: net.ParseIP(addrString)})
+			slice = slice[length:]
 		}
 		res = joinResponse{peers}
 	case 4:
