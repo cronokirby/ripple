@@ -83,7 +83,7 @@ func ReadMessage(r io.Reader) (Message, error) {
 		for uint(len(peers)) < peerCount {
 			length := slice[0]
 			slice = slice[1:]
-			if len(slice) < 256 || byte(len(slice)) < length {
+			for len(slice) < 256 && byte(len(slice)) < length {
 				newBuf := make([]byte, len(slice))
 				copy(newBuf, slice)
 				slice = newBuf
@@ -103,8 +103,8 @@ func ReadMessage(r io.Reader) (Message, error) {
 		length |= uint(slice[3]) << 8
 		length |= uint(slice[4])
 		slice = slice[5:]
-		stringBuf := make([]byte, len(slice), length)
-		copy(stringBuf, slice)
+		stringBuf := make([]byte, 0, length)
+		stringBuf = append(stringBuf, slice...)
 		for uint(len(stringBuf)) < length {
 			amount, err := r.Read(buf)
 			if err != nil {
