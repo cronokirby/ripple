@@ -105,7 +105,7 @@ func ReadMessage(r io.Reader) (Message, error) {
 		slice = slice[5:]
 		stringBuf := make([]byte, len(slice), length)
 		copy(stringBuf, slice)
-		for uint(len(slice)) < length {
+		for uint(len(stringBuf)) < length {
 			amount, err := r.Read(buf)
 			if err != nil {
 				return nil, err
