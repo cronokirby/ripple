@@ -73,23 +73,75 @@ func (j *Joiner) Run(addr net.Addr) error {
 	// Connect to every peer we've been given
 	newConns := make(chan net.Conn)
 	newConns <- conn
-	firstClient := &normalClient{newConns}
-	go firstClient.loop(conn)
+	firstClient := &normalClient{}
+	go firstClient.justLoop(conn)
 	for _, addr := range j.peers {
-		client := &normalClient{newConns}
-		go client.connectAndLoop(addr)
+		client := &normalClient{}
+		go client.connectAndLoop(addr, newConns)
 	}
-	// Listen and loop with new connections
-	return nil
+	l, err := net.Listen("tcp", "localhost:3000")
+	if err != nil {
+		return err
+	}
+	defer l.Close()
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			return err
+		}
+		peers := j.peers
+		client := &acceptingClient{newConns, conn, peers}
+		go client.accept()
+	}
 }
 
-type normalClient struct {
-	// newConn is a channel used to notify the broadcast messanger of
-	// new connections it will need to sending to
-	// This is really only used at the start of the lifecylce of a normalClient,
-	// after it manages to connect to the peer it is attached to
+// acceptingClient tries and connect with a newly accepted peer
+type acceptingClient struct {
+	// newConns is a channel we can use to broadcast the new connection
+	// if it's client that behaves correctly, and we enter a normal
+	// relationship in it
 	newConns chan net.Conn
+	conn     net.Conn
+	peers    []net.Addr
 }
+
+func (client *acceptingClient) HandlePing() error {
+	return errors.New("Unexpected Ping in acceptingClient")
+}
+
+func (client *acceptingClient) HandleJoinRequest() error {
+	resp := protocol.JoinResponse{Peers: client.peers}
+	err := sendMessage(client.conn, resp)
+	if err != nil {
+		return err
+	}
+	client.newConns <- client.conn
+	newClient := &normalClient{}
+	return newClient.innerLoop(client.conn)
+}
+
+func (client *acceptingClient) HandleJoinResponse(_ protocol.JoinResponse) error {
+	return errors.New("Unexpected JoinResponse in acceptingClient")
+}
+
+func (client *acceptingClient) HandleNewMessage(_ protocol.NewMessage) error {
+	return errors.New("Unexpected NewMessage in acceptingClient")
+}
+
+func (client *acceptingClient) accept() error {
+	defer client.conn.Close()
+	msg, err := protocol.ReadMessage(client.conn)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	// this will loop forever in the new state
+	err = msg.PassToClient(client)
+	fmt.Println(err)
+	return err
+}
+
+type normalClient struct{}
 
 func (client *normalClient) HandlePing() error {
 	// TODO: Handle timeouts
@@ -111,17 +163,27 @@ func (client *normalClient) HandleNewMessage(msg protocol.NewMessage) error {
 
 // connectAndLoop starts a normal client with a new address to connect to,
 // and returns an error whenever something fatal occurrs
-func (client *normalClient) connectAndLoop(addr net.Addr) error {
+func (client *normalClient) connectAndLoop(addr net.Addr, newConns chan net.Conn) error {
 	conn, err := net.Dial(addr.Network(), addr.String())
 	if err != nil {
 		return err
 	}
-	return client.loop(conn)
+	defer conn.Close()
+	newConns <- conn
+	err = client.innerLoop(conn)
+	fmt.Println(err)
+	return err
 }
 
-func (client *normalClient) loop(conn net.Conn) error {
+func (client *normalClient) justLoop(conn net.Conn) error {
 	defer conn.Close()
-	client.newConns <- conn
+	err := client.innerLoop(conn)
+	fmt.Println(err)
+	return err
+}
+
+// this will not close the connection, and is meant to be called by other things
+func (client *normalClient) innerLoop(conn net.Conn) error {
 	for {
 		msg, err := protocol.ReadMessage(conn)
 		if err != nil {
