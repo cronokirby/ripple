@@ -15,8 +15,8 @@ type Joiner struct {
 }
 
 // NewJoiner creates a valid joiner, since the zero value isn't
-func NewJoiner() Joiner {
-	return Joiner{peers: &peerList{}, broadcaster: makeBroadcaster()}
+func NewJoiner() *Joiner {
+	return &Joiner{peers: &peerList{}, broadcaster: makeBroadcaster()}
 }
 
 // HandlePing exits the connection, because we only expect JoinResponse
@@ -69,6 +69,7 @@ func (j *Joiner) Start(myAddr string, remoteAddr net.Addr) error {
 		conn.Close()
 		return err
 	}
+	go j.broadcaster.loop()
 	go func() {
 		// Connect to every peer we've been given
 		j.broadcaster.sendConn(conn)
@@ -80,24 +81,15 @@ func (j *Joiner) Start(myAddr string, remoteAddr net.Addr) error {
 		}
 		// We add the first peer now, not wanting to loop over it
 		j.peers.addPeers(conn.RemoteAddr())
-		l, err := net.Listen("tcp", myAddr)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer l.Close()
 		for {
-			err := j.Listen(myAddr)
-			if err != nil {
-				fmt.Println(err)
-			}
+			err = j.Listen(myAddr)
+			fmt.Println(err)
 		}
 	}()
 	return nil
 }
 
-// Listen won't join an existing swarm, but create its own swarm
-func (j *Joiner) Listen(myAddr string) error {
+func (j *Joiner) innerListen(myAddr string) error {
 	l, err := net.Listen("tcp", myAddr)
 	if err != nil {
 		return err
@@ -112,6 +104,12 @@ func (j *Joiner) Listen(myAddr string) error {
 		client := &acceptingClient{j.broadcaster, conn, peers}
 		go client.accept()
 	}
+}
+
+// Listen won't join an existing swarm, but create its own swarm
+func (j *Joiner) Listen(myAddr string) error {
+	go j.broadcaster.loop()
+	return j.innerListen(myAddr)
 }
 
 // SendContent sends a new piece of a content the swarm we're connected to
