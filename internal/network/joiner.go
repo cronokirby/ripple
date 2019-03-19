@@ -130,6 +130,14 @@ type acceptingClient struct {
 	peers       *peerList
 }
 
+// normalise makes the relationship into a normal client one
+func (client *acceptingClient) normalise() error {
+	client.broadcaster.sendConn(client.conn)
+	client.peers.addPeers(client.conn.RemoteAddr())
+	newClient := &normalClient{}
+	return newClient.innerLoop(client.conn)
+}
+
 func (client *acceptingClient) HandlePing() error {
 	return errors.New("Unexpected Ping in acceptingClient")
 }
@@ -140,10 +148,7 @@ func (client *acceptingClient) HandleJoinRequest() error {
 	if err != nil {
 		return err
 	}
-	client.broadcaster.sendConn(client.conn)
-	client.peers.addPeers(client.conn.RemoteAddr())
-	newClient := &normalClient{}
-	return newClient.innerLoop(client.conn)
+	return client.normalise()
 }
 
 func (client *acceptingClient) HandleJoinResponse(_ protocol.JoinResponse) error {
@@ -151,7 +156,8 @@ func (client *acceptingClient) HandleJoinResponse(_ protocol.JoinResponse) error
 }
 
 func (client *acceptingClient) HandleNewMessage(_ protocol.NewMessage) error {
-	return errors.New("Unexpected NewMessage in acceptingClient")
+	// In this case, the client doesn't want to join the swarm, just connect
+	return client.normalise()
 }
 
 func (client *acceptingClient) accept() error {
