@@ -22,7 +22,9 @@ func sendMessage(w io.Writer, msg protocol.Message) error {
 }
 
 // Joiner represents a client that tries and join a new swarm
-type Joiner struct{}
+type Joiner struct {
+	peers []net.Addr
+}
 
 // HandlePing exits the connection, because we only expect JoinResponse
 func (j *Joiner) HandlePing() error {
@@ -37,6 +39,7 @@ func (j *Joiner) HandleJoinRequest() error {
 // HandleJoinResponse allows us to enter the swarm completely.
 // This function will loop, and perform the normal swarm operations
 func (j *Joiner) HandleJoinResponse(resp protocol.JoinResponse) error {
+	j.peers = resp.Peers
 	return nil
 }
 
@@ -63,7 +66,21 @@ func (j *Joiner) Run(addr net.Addr) error {
 		return err
 	}
 	// This will loop if the client sends us a JoinResponse
-	return msg.PassToClient(j)
+	err = msg.PassToClient(j)
+	if err != nil {
+		return err
+	}
+	// Connect to every peer we've been given
+	newConns := make(chan net.Conn)
+	newConns <- conn
+	firstClient := &normalClient{newConns}
+	go firstClient.loop(conn)
+	for _, addr := range j.peers {
+		client := &normalClient{newConns}
+		go client.connectAndLoop(addr)
+	}
+	// Listen and loop with new connections
+	return nil
 }
 
 type normalClient struct {
@@ -92,13 +109,17 @@ func (client *normalClient) HandleNewMessage(msg protocol.NewMessage) error {
 	return nil
 }
 
-// startWith starts a normal client with a new address to connect to,
+// connectAndLoop starts a normal client with a new address to connect to,
 // and returns an error whenever something fatal occurrs
-func (client *normalClient) startWith(addr net.Addr) error {
+func (client *normalClient) connectAndLoop(addr net.Addr) error {
 	conn, err := net.Dial(addr.Network(), addr.String())
 	if err != nil {
 		return err
 	}
+	return client.loop(conn)
+}
+
+func (client *normalClient) loop(conn net.Conn) error {
 	defer conn.Close()
 	client.newConns <- conn
 	for {
