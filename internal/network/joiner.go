@@ -87,18 +87,31 @@ func (j *Joiner) Start(myAddr string, remoteAddr net.Addr) error {
 		}
 		defer l.Close()
 		for {
-			conn, err := l.Accept()
+			err := j.Listen(myAddr)
 			if err != nil {
 				fmt.Println(err)
-				return
 			}
-			peers := j.peers
-			client := &acceptingClient{j.broadcaster, conn, peers}
-			go client.accept()
 		}
-
 	}()
 	return nil
+}
+
+// Listen won't join an existing swarm, but create its own swarm
+func (j *Joiner) Listen(myAddr string) error {
+	l, err := net.Listen("tcp", myAddr)
+	if err != nil {
+		return err
+	}
+	defer l.Close()
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			return err
+		}
+		peers := j.peers
+		client := &acceptingClient{j.broadcaster, conn, peers}
+		go client.accept()
+	}
 }
 
 // SendContent sends a new piece of a content the swarm we're connected to
