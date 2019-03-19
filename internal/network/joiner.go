@@ -107,6 +107,8 @@ func (j *Joiner) Run(myAddr string, remoteAddr net.Addr) error {
 		client := &normalClient{}
 		go client.connectAndLoop(addr, newConns)
 	}
+	// We add the first peer now, not wanting to loop over it
+	j.peers.addPeers(conn.RemoteAddr())
 	l, err := net.Listen("tcp", myAddr)
 	if err != nil {
 		return err
