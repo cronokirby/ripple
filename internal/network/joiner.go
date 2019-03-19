@@ -84,18 +84,20 @@ func (j *Joiner) Run(myAddr string, remoteAddr net.Addr) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	// We can't defer the conn closing because
 	err = sendMessage(conn, protocol.JoinRequest{})
 	if err != nil {
+		conn.Close()
 		return err
 	}
 	msg, err := protocol.ReadMessage(conn)
 	if err != nil {
+		conn.Close()
 		return err
 	}
-	// This will loop if the client sends us a JoinResponse
 	err = msg.PassToClient(j)
 	if err != nil {
+		conn.Close()
 		return err
 	}
 	// Connect to every peer we've been given
