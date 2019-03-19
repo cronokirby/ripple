@@ -5,9 +5,30 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/cronokirby/ripple/internal/protocol"
 )
+
+// peerList is a list of peers that can be updated concurrently.
+// the zero value of peerList is valid
+type peerList struct {
+	peers []net.Addr
+	lock  sync.Mutex
+}
+
+// addPeers safely adds a list of peers to a peerList
+// this function can be used safely concurrently, but will block
+func (peers *peerList) addPeers(newPeers ...net.Addr) {
+	peers.lock.Lock()
+	defer peers.lock.Unlock()
+	peers.peers = append(peers.peers, newPeers...)
+}
+
+// This function is safe so long as the slice isn't mutated
+func (peers *peerList) getPeers() []net.Addr {
+	return peers.peers
+}
 
 func sendMessage(w io.Writer, msg protocol.Message) error {
 	data := msg.MessageBytes()
@@ -23,7 +44,12 @@ func sendMessage(w io.Writer, msg protocol.Message) error {
 
 // Joiner represents a client that tries and join a new swarm
 type Joiner struct {
-	peers []net.Addr
+	peers *peerList
+}
+
+// NewJoiner creates a valid joiner, since the zero value isn't
+func NewJoiner() Joiner {
+	return Joiner{peers: &peerList{}}
 }
 
 // HandlePing exits the connection, because we only expect JoinResponse
@@ -39,7 +65,7 @@ func (j *Joiner) HandleJoinRequest() error {
 // HandleJoinResponse allows us to enter the swarm completely.
 // This function will loop, and perform the normal swarm operations
 func (j *Joiner) HandleJoinResponse(resp protocol.JoinResponse) error {
-	j.peers = resp.Peers
+	j.peers.addPeers(resp.Peers...)
 	return nil
 }
 
@@ -75,7 +101,7 @@ func (j *Joiner) Run(addr net.Addr) error {
 	newConns <- conn
 	firstClient := &normalClient{}
 	go firstClient.justLoop(conn)
-	for _, addr := range j.peers {
+	for _, addr := range j.peers.getPeers() {
 		client := &normalClient{}
 		go client.connectAndLoop(addr, newConns)
 	}
@@ -102,7 +128,7 @@ type acceptingClient struct {
 	// relationship in it
 	newConns chan net.Conn
 	conn     net.Conn
-	peers    []net.Addr
+	peers    *peerList
 }
 
 func (client *acceptingClient) HandlePing() error {
@@ -110,12 +136,13 @@ func (client *acceptingClient) HandlePing() error {
 }
 
 func (client *acceptingClient) HandleJoinRequest() error {
-	resp := protocol.JoinResponse{Peers: client.peers}
+	resp := protocol.JoinResponse{Peers: client.peers.getPeers()}
 	err := sendMessage(client.conn, resp)
 	if err != nil {
 		return err
 	}
 	client.newConns <- client.conn
+	client.peers.addPeers(client.conn.RemoteAddr())
 	newClient := &normalClient{}
 	return newClient.innerLoop(client.conn)
 }
