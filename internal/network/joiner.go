@@ -77,8 +77,10 @@ func (j *Joiner) HandleNewMessage(msg protocol.NewMessage) error {
 // Run blocks the current thread to run a joiner given a certain address,
 // which it will use to enter the swarm
 // This function will exit if it encounters an error
-func (j *Joiner) Run(addr net.Addr) error {
-	conn, err := net.Dial(addr.Network(), addr.String())
+//
+// myAddr is the address to listen to after first connecting to remoteAddr
+func (j *Joiner) Run(myAddr string, remoteAddr net.Addr) error {
+	conn, err := net.Dial(remoteAddr.Network(), remoteAddr.String())
 	if err != nil {
 		return err
 	}
@@ -105,7 +107,7 @@ func (j *Joiner) Run(addr net.Addr) error {
 		client := &normalClient{}
 		go client.connectAndLoop(addr, newConns)
 	}
-	l, err := net.Listen("tcp", "localhost:3000")
+	l, err := net.Listen("tcp", myAddr)
 	if err != nil {
 		return err
 	}
