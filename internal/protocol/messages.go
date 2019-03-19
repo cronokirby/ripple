@@ -9,33 +9,47 @@ import (
 // by a peer
 type Message interface {
 	MessageBytes() []byte
+	PassToClient(Client) error
 }
 
-// ping represents a Ping message, that has to be sent from time to time, in
+// Ping represents a Ping message, that has to be sent from time to time, in
 // order to keep a connection between 2 peers alive
-type ping struct{}
+type Ping struct{}
 
-func (p ping) MessageBytes() []byte {
+// MessageBytes serializes a ping message
+func (p Ping) MessageBytes() []byte {
 	return []byte{1}
 }
 
-// joinRequest represents a request from one peer to join the swarm
+// PassToClient implements the visitor pattern for Ping
+func (p Ping) PassToClient(c Client) error {
+	return c.HandlePing()
+}
+
+// JoinRequest represents a request from one peer to join the swarm
 // chat the other peer is in. The peer receiving this message should
 // respond with its own JoinResponse
-type joinRequest struct{}
+type JoinRequest struct{}
 
-func (r joinRequest) MessageBytes() []byte {
+// MessageBytes serializes JoinRequest
+func (r JoinRequest) MessageBytes() []byte {
 	return []byte{2}
 }
 
-// joinResponse represents the response from a peer after a joinRequest
-type joinResponse struct {
+// PassToClient just implements the visitor pattern
+func (r JoinRequest) PassToClient(c Client) error {
+	return c.HandleJoinRequest()
+}
+
+// JoinResponse represents the response from a peer after a joinRequest
+type JoinResponse struct {
 	// A list of peers we can connect to, and that may try and connect
 	// with us
 	peers []net.Addr
 }
 
-func (resp joinResponse) MessageBytes() []byte {
+// MessageBytes serializes a JoinResponse
+func (resp JoinResponse) MessageBytes() []byte {
 	l := len(resp.peers)
 	acc := []byte{3, byte(l >> 24), byte(l >> 16), byte(l >> 8), byte(l)}
 	for _, peer := range resp.peers {
@@ -46,15 +60,26 @@ func (resp joinResponse) MessageBytes() []byte {
 	return acc
 }
 
-// message represents a message sent to a swarm by a peer
-type newMessage struct {
+// PassToClient implements the visitor pattern for JoinResponse
+func (resp JoinResponse) PassToClient(c Client) error {
+	return c.HandleJoinResponse(resp)
+}
+
+// NewMessage represents a message sent to a swarm by a peer
+type NewMessage struct {
 	content string
 }
 
-func (req newMessage) MessageBytes() []byte {
+// MessageBytes serializes a NewMessage
+func (req NewMessage) MessageBytes() []byte {
 	l := len(req.content)
 	acc := []byte{4, byte(l >> 24), byte(l >> 16), byte(l >> 8), byte(l)}
 	return append(acc, []byte(req.content)...)
+}
+
+// PassToClient implements the visitor pattern for NewMessage
+func (req NewMessage) PassToClient(c Client) error {
+	return c.HandleNewMessage(req)
 }
 
 // ReadMessage reads bytes into a Message
@@ -70,9 +95,9 @@ func ReadMessage(r io.Reader) (Message, error) {
 	var res Message
 	switch slice[0] {
 	case 1:
-		res = ping{}
+		res = Ping{}
 	case 2:
-		res = joinRequest{}
+		res = JoinRequest{}
 	case 3:
 		peerCount := uint(slice[1]) << 24
 		peerCount |= uint(slice[2]) << 16
@@ -97,7 +122,7 @@ func ReadMessage(r io.Reader) (Message, error) {
 			peers = append(peers, &net.IPAddr{IP: net.ParseIP(addrString)})
 			slice = slice[length:]
 		}
-		res = joinResponse{peers}
+		res = JoinResponse{peers}
 	case 4:
 		length := uint(slice[1]) << 24
 		length |= uint(slice[2]) << 16
@@ -113,7 +138,7 @@ func ReadMessage(r io.Reader) (Message, error) {
 			}
 			stringBuf = append(stringBuf, buf[:amount]...)
 		}
-		res = newMessage{content: string(stringBuf)}
+		res = NewMessage{content: string(stringBuf)}
 	}
 	return res, nil
 }

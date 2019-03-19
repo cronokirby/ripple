@@ -4,11 +4,11 @@ package protocol
 // This is basically the visitor pattern to emulate sum types
 type Client interface {
 	// Handle a ping message from the peer
-	HandlePing()
+	HandlePing() error
 	// Handle a request to join a swarm
-	HandleJoinRequest()
+	HandleJoinRequest() error
 	// Handle the response to a join request
-	HandleJoinResponse()
+	HandleJoinResponse(JoinResponse) error
 	// Handle a new message from a peer
-	HandleNewMessage()
+	HandleNewMessage(NewMessage) error
 }

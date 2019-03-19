@@ -9,7 +9,7 @@ import (
 )
 
 func TestPingMessageBytes(t *testing.T) {
-	var p ping
+	var p Ping
 	result := p.MessageBytes()
 	expected := []byte{1}
 	if !bytes.Equal(result, expected) {
@@ -18,7 +18,7 @@ func TestPingMessageBytes(t *testing.T) {
 }
 
 func TestJoinRequestMessageBytes(t *testing.T) {
-	var r joinRequest
+	var r JoinRequest
 	result := r.MessageBytes()
 	expected := []byte{2}
 	if !bytes.Equal(result, expected) {
@@ -27,7 +27,7 @@ func TestJoinRequestMessageBytes(t *testing.T) {
 }
 
 func TestJoinResponseMessageBytes(t *testing.T) {
-	r := joinResponse{
+	r := JoinResponse{
 		peers: []net.Addr{&net.IPAddr{IP: net.ParseIP("0.0.0.0")}},
 	}
 	result := r.MessageBytes()
@@ -38,7 +38,7 @@ func TestJoinResponseMessageBytes(t *testing.T) {
 }
 
 func TestNewMessageMessageBytes(t *testing.T) {
-	r := newMessage{content: "AAA"}
+	r := NewMessage{content: "AAA"}
 	expected := []byte{4, 0, 0, 0, 3, 65, 65, 65}
 	result := r.MessageBytes()
 	if !bytes.Equal(result, expected) {
@@ -51,8 +51,8 @@ func TestPingParsing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parsing failed: %v", err)
 	}
-	expected := ping{}
-	if msg.(ping) != expected {
+	expected := Ping{}
+	if msg.(Ping) != expected {
 		t.Errorf("Expected %v got %v", expected, msg)
 	}
 }
@@ -62,14 +62,14 @@ func TestJoinRequestParsing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parsing failed: %v", err)
 	}
-	expected := joinRequest{}
-	if msg.(joinRequest) != expected {
+	expected := JoinRequest{}
+	if msg.(JoinRequest) != expected {
 		t.Errorf("Expected %v got %v", expected, msg)
 	}
 }
 
 func TestJoinResponseRoundTrip(t *testing.T) {
-	r := joinResponse{
+	r := JoinResponse{
 		peers: []net.Addr{
 			&net.IPAddr{IP: net.ParseIP("0.0.0.0")},
 			&net.IPAddr{IP: net.ParseIP("155.10.29.128")},
@@ -82,7 +82,7 @@ func TestJoinResponseRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parsing failed: %v", err)
 	}
-	if !reflect.DeepEqual(roundTrip.(joinResponse), r) {
+	if !reflect.DeepEqual(roundTrip.(JoinResponse), r) {
 		t.Errorf("Expected %v got %v", r, roundTrip)
 	}
 }
@@ -93,23 +93,23 @@ func TestJoinResponseRoundTripBig(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		peers[i] = &net.IPAddr{IP: ip}
 	}
-	r := joinResponse{peers}
+	r := JoinResponse{peers}
 	roundTrip, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
 	if err != nil {
 		t.Fatalf("Parsing failed: %v", err)
 	}
-	if !reflect.DeepEqual(roundTrip.(joinResponse), r) {
+	if !reflect.DeepEqual(roundTrip.(JoinResponse), r) {
 		t.Errorf("Expected %v got %v", r, roundTrip)
 	}
 }
 
 func TestNewMessageRoundTrip(t *testing.T) {
-	r := newMessage{content: "Hello World!"}
+	r := NewMessage{content: "Hello World!"}
 	roundTrip, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
 	if err != nil {
 		t.Fatalf("Parsing failed: %v", err)
 	}
-	if !reflect.DeepEqual(roundTrip.(newMessage), r) {
+	if !reflect.DeepEqual(roundTrip.(NewMessage), r) {
 		t.Errorf("Expected %v got %v", r, roundTrip)
 	}
 }
