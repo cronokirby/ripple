@@ -2,6 +2,7 @@ package network
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
 
@@ -49,10 +50,10 @@ func (j *Joiner) HandleNewMessage(msg protocol.NewMessage) error {
 // This function will exit if it encounters an error
 func (j *Joiner) Run(addr net.Addr) error {
 	conn, err := net.Dial(addr.Network(), addr.String())
-	defer conn.Close()
 	if err != nil {
 		return err
 	}
+	defer conn.Close()
 	err = sendMessage(conn, protocol.JoinRequest{})
 	if err != nil {
 		return err
@@ -63,4 +64,51 @@ func (j *Joiner) Run(addr net.Addr) error {
 	}
 	// This will loop if the client sends us a JoinResponse
 	return msg.PassToClient(j)
+}
+
+type normalClient struct {
+	// newConn is a channel used to notify the broadcast messanger of
+	// new connections it will need to sending to
+	// This is really only used at the start of the lifecylce of a normalClient,
+	// after it manages to connect to the peer it is attached to
+	newConns chan net.Conn
+}
+
+func (client *normalClient) HandlePing() error {
+	// TODO: Handle timeouts
+	return nil
+}
+
+func (client *normalClient) HandleJoinRequest() error {
+	return errors.New("Unexpected JoinRequest in normalClient")
+}
+
+func (client *normalClient) HandleJoinResponse(_ protocol.JoinResponse) error {
+	return errors.New("Unexpected JoinResponse in normalClient")
+}
+
+func (client *normalClient) HandleNewMessage(msg protocol.NewMessage) error {
+	fmt.Println(msg.Content)
+	return nil
+}
+
+// startWith starts a normal client with a new address to connect to,
+// and returns an error whenever something fatal occurrs
+func (client *normalClient) startWith(addr net.Addr) error {
+	conn, err := net.Dial(addr.Network(), addr.String())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	client.newConns <- conn
+	for {
+		msg, err := protocol.ReadMessage(conn)
+		if err != nil {
+			return err
+		}
+		err = msg.PassToClient(client)
+		if err != nil {
+			return err
+		}
+	}
 }

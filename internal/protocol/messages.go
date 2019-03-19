@@ -45,14 +45,14 @@ func (r JoinRequest) PassToClient(c Client) error {
 type JoinResponse struct {
 	// A list of peers we can connect to, and that may try and connect
 	// with us
-	peers []net.Addr
+	Peers []net.Addr
 }
 
 // MessageBytes serializes a JoinResponse
 func (resp JoinResponse) MessageBytes() []byte {
-	l := len(resp.peers)
+	l := len(resp.Peers)
 	acc := []byte{3, byte(l >> 24), byte(l >> 16), byte(l >> 8), byte(l)}
-	for _, peer := range resp.peers {
+	for _, peer := range resp.Peers {
 		str := peer.String()
 		acc = append(acc, byte(len(str)))
 		acc = append(acc, []byte(str)...)
@@ -67,14 +67,14 @@ func (resp JoinResponse) PassToClient(c Client) error {
 
 // NewMessage represents a message sent to a swarm by a peer
 type NewMessage struct {
-	content string
+	Content string
 }
 
 // MessageBytes serializes a NewMessage
 func (req NewMessage) MessageBytes() []byte {
-	l := len(req.content)
+	l := len(req.Content)
 	acc := []byte{4, byte(l >> 24), byte(l >> 16), byte(l >> 8), byte(l)}
-	return append(acc, []byte(req.content)...)
+	return append(acc, []byte(req.Content)...)
 }
 
 // PassToClient implements the visitor pattern for NewMessage
@@ -138,7 +138,7 @@ func ReadMessage(r io.Reader) (Message, error) {
 			}
 			stringBuf = append(stringBuf, buf[:amount]...)
 		}
-		res = NewMessage{content: string(stringBuf)}
+		res = NewMessage{Content: string(stringBuf)}
 	}
 	return res, nil
 }

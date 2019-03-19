@@ -28,7 +28,7 @@ func TestJoinRequestMessageBytes(t *testing.T) {
 
 func TestJoinResponseMessageBytes(t *testing.T) {
 	r := JoinResponse{
-		peers: []net.Addr{&net.IPAddr{IP: net.ParseIP("0.0.0.0")}},
+		Peers: []net.Addr{&net.IPAddr{IP: net.ParseIP("0.0.0.0")}},
 	}
 	result := r.MessageBytes()
 	expected := []byte{3, 0, 0, 0, 1, 7, 48, 46, 48, 46, 48, 46, 48}
@@ -38,7 +38,7 @@ func TestJoinResponseMessageBytes(t *testing.T) {
 }
 
 func TestNewMessageMessageBytes(t *testing.T) {
-	r := NewMessage{content: "AAA"}
+	r := NewMessage{Content: "AAA"}
 	expected := []byte{4, 0, 0, 0, 3, 65, 65, 65}
 	result := r.MessageBytes()
 	if !bytes.Equal(result, expected) {
@@ -70,7 +70,7 @@ func TestJoinRequestParsing(t *testing.T) {
 
 func TestJoinResponseRoundTrip(t *testing.T) {
 	r := JoinResponse{
-		peers: []net.Addr{
+		Peers: []net.Addr{
 			&net.IPAddr{IP: net.ParseIP("0.0.0.0")},
 			&net.IPAddr{IP: net.ParseIP("155.10.29.128")},
 			&net.IPAddr{IP: net.ParseIP("203.123.2.34")},
@@ -104,7 +104,7 @@ func TestJoinResponseRoundTripBig(t *testing.T) {
 }
 
 func TestNewMessageRoundTrip(t *testing.T) {
-	r := NewMessage{content: "Hello World!"}
+	r := NewMessage{Content: "Hello World!"}
 	roundTrip, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
 	if err != nil {
 		t.Fatalf("Parsing failed: %v", err)
