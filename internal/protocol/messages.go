@@ -119,7 +119,12 @@ func ReadMessage(r io.Reader) (Message, error) {
 				slice = append(slice, buf[:amount]...)
 			}
 			addrString := string(slice[:length])
-			peers = append(peers, &net.IPAddr{IP: net.ParseIP(addrString)})
+			// TODO: add a port field here instead of parsing the port
+			addr, err := net.ResolveTCPAddr("tcp", addrString)
+			if err != nil {
+				return nil, err
+			}
+			peers = append(peers, addr)
 			slice = slice[length:]
 		}
 		res = JoinResponse{peers}

@@ -28,10 +28,11 @@ func TestJoinRequestMessageBytes(t *testing.T) {
 
 func TestJoinResponseMessageBytes(t *testing.T) {
 	r := JoinResponse{
-		Peers: []net.Addr{&net.IPAddr{IP: net.ParseIP("0.0.0.0")}},
+		Peers: []net.Addr{&net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: 99}},
 	}
 	result := r.MessageBytes()
-	expected := []byte{3, 0, 0, 0, 1, 7, 48, 46, 48, 46, 48, 46, 48}
+	expected := []byte{3, 0, 0, 0, 1, 10}
+	expected = append(expected, []byte("0.0.0.0:99")...)
 	if !bytes.Equal(result, expected) {
 		t.Errorf("Expected %v got %v", expected, result)
 	}
@@ -71,10 +72,10 @@ func TestJoinRequestParsing(t *testing.T) {
 func TestJoinResponseRoundTrip(t *testing.T) {
 	r := JoinResponse{
 		Peers: []net.Addr{
-			&net.IPAddr{IP: net.ParseIP("0.0.0.0")},
-			&net.IPAddr{IP: net.ParseIP("155.10.29.128")},
-			&net.IPAddr{IP: net.ParseIP("203.123.2.34")},
-			&net.IPAddr{IP: net.ParseIP("111.2.4.45")},
+			&net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: 90},
+			&net.TCPAddr{IP: net.ParseIP("155.10.29.128"), Port: 8000},
+			&net.TCPAddr{IP: net.ParseIP("203.123.2.34"), Port: 1227},
+			&net.TCPAddr{IP: net.ParseIP("111.2.4.45"), Port: 1234},
 		},
 	}
 	fmt.Println(len(r.MessageBytes()))
@@ -91,7 +92,7 @@ func TestJoinResponseRoundTripBig(t *testing.T) {
 	ip := net.ParseIP("101.101.101.101")
 	peers := make([]net.Addr, 100)
 	for i := 0; i < 100; i++ {
-		peers[i] = &net.IPAddr{IP: ip}
+		peers[i] = &net.TCPAddr{IP: ip, Port: 400}
 	}
 	r := JoinResponse{peers}
 	roundTrip, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
