@@ -33,7 +33,7 @@ func joinAndSend(content string, myAddr string, addr string) error {
 	if err := joiner.Start(myAddr, remote); err != nil {
 		fmt.Println(err)
 	}
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(25 * time.Millisecond)
 	joiner.SendContent(content)
 	return nil
 }
@@ -55,7 +55,7 @@ func TestSwarmIntegration(t *testing.T) {
 		t.Fatalf("Error joining swarm: %v", err)
 	}
 	expected := make(map[string]bool)
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	for _, val := range acc.msgs {
 		fmt.Println(val)
 		expected[val] = true
