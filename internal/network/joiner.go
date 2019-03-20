@@ -12,11 +12,12 @@ import (
 type Joiner struct {
 	peers       *peerList
 	broadcaster *broadcaster
+	receiver    protocol.ContentReceiver
 }
 
 // NewJoiner creates a valid joiner, since the zero value isn't
-func NewJoiner() *Joiner {
-	return &Joiner{peers: &peerList{}, broadcaster: makeBroadcaster()}
+func NewJoiner(receiever protocol.ContentReceiver) *Joiner {
+	return &Joiner{peers: &peerList{}, broadcaster: makeBroadcaster(), receiver: receiever}
 }
 
 // HandlePing exits the connection, because we only expect JoinResponse
@@ -101,7 +102,8 @@ func (j *Joiner) innerListen(myAddr string) error {
 			return err
 		}
 		peers := j.peers
-		client := &acceptingClient{j.broadcaster, conn, peers}
+		receiver := j.receiver
+		client := &acceptingClient{j.broadcaster, conn, peers, receiver}
 		go client.accept()
 	}
 }
@@ -128,13 +130,14 @@ type acceptingClient struct {
 	broadcaster *broadcaster
 	conn        net.Conn
 	peers       *peerList
+	receiever   protocol.ContentReceiver
 }
 
 // normalise makes the relationship into a normal client one
 func (client *acceptingClient) normalise() error {
 	client.broadcaster.sendConn(client.conn)
 	client.peers.addPeers(client.conn.RemoteAddr())
-	newClient := &normalClient{}
+	newClient := &normalClient{receiver: client.receiever}
 	return newClient.innerLoop(client.conn)
 }
 
@@ -155,8 +158,9 @@ func (client *acceptingClient) HandleJoinResponse(_ protocol.JoinResponse) error
 	return errors.New("Unexpected JoinResponse in acceptingClient")
 }
 
-func (client *acceptingClient) HandleNewMessage(_ protocol.NewMessage) error {
+func (client *acceptingClient) HandleNewMessage(msg protocol.NewMessage) error {
 	// In this case, the client doesn't want to join the swarm, just connect
+	client.receiever.ReceiveContent(msg.Content)
 	return client.normalise()
 }
 
@@ -173,7 +177,9 @@ func (client *acceptingClient) accept() error {
 	return err
 }
 
-type normalClient struct{}
+type normalClient struct {
+	receiver protocol.ContentReceiver
+}
 
 func (client *normalClient) HandlePing() error {
 	// TODO: Handle timeouts
@@ -189,7 +195,7 @@ func (client *normalClient) HandleJoinResponse(_ protocol.JoinResponse) error {
 }
 
 func (client *normalClient) HandleNewMessage(msg protocol.NewMessage) error {
-	fmt.Println(msg.Content)
+	client.receiver.ReceiveContent(msg.Content)
 	return nil
 }
 

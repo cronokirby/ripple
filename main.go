@@ -6,6 +6,8 @@ import (
 	"net"
 	"os"
 
+	"github.com/cronokirby/ripple/internal/protocol"
+
 	"github.com/cronokirby/ripple/internal/network"
 )
 
@@ -25,7 +27,7 @@ func main() {
 		fmt.Println("Insufficient arguments")
 		os.Exit(1)
 	}
-	joiner := network.NewJoiner()
+	joiner := network.NewJoiner(&protocol.PrintReceiver{})
 	switch args[1] {
 	case "listen":
 		if argLen < 3 {

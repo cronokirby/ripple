@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"fmt"
 	"io"
 	"net"
 )
@@ -146,4 +147,22 @@ func ReadMessage(r io.Reader) (Message, error) {
 		res = NewMessage{Content: string(stringBuf)}
 	}
 	return res, nil
+}
+
+// ContentReceiver is some type that can do something when new content arrives
+//
+// This is useful in testing, as it allows us to define tests that check
+// if certain content was received. In normal usage, this allows us to
+// update a gui or terminal based client.
+type ContentReceiver interface {
+	// ReceiveContent allows this object to react to some new content
+	ReceiveContent(string)
+}
+
+// PrintReceiver is a ContentReceiver that just prints the received content
+type PrintReceiver struct{}
+
+// ReceiveContent just prints the new content we've received
+func (p PrintReceiver) ReceiveContent(content string) {
+	fmt.Println(content)
 }
