@@ -77,7 +77,7 @@ func (j *Joiner) Start(myAddr string, remoteAddr net.Addr) error {
 		firstClient := &normalClient{receiver: j.receiver}
 		go firstClient.justLoop(conn)
 		for _, addr := range j.peers.getPeers() {
-			client := &normalClient{}
+			client := &normalClient{receiver: j.receiver}
 			go client.connectAndLoop(addr, j.broadcaster)
 		}
 		// We add the first peer now, not wanting to loop over it
