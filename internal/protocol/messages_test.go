@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"net"
+	"reflect"
 	"testing"
 )
 
@@ -48,6 +49,19 @@ func TestReferralMessageBytes(t *testing.T) {
 	}
 }
 
+func TestReferralRoundTrip(t *testing.T) {
+	r := Referral{
+		Addr: &net.TCPAddr{IP: net.ParseIP("128.125.44.20"), Port: 8008},
+	}
+	expected, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(r, expected) {
+		t.Errorf("Expected %v got %v", expected, r)
+	}
+}
+
 func TestNewPredecessorMessageBytes(t *testing.T) {
 	r := NewPredecessor{
 		Addr: &net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: 99},
@@ -58,6 +72,19 @@ func TestNewPredecessorMessageBytes(t *testing.T) {
 	result := r.MessageBytes()
 	if !bytes.Equal(result, expected) {
 		t.Errorf("Expected %v got %v", expected, result)
+	}
+}
+
+func TestNewPredecessorRoundTrip(t *testing.T) {
+	r := NewPredecessor{
+		Addr: &net.TCPAddr{IP: net.ParseIP("128.125.44.20"), Port: 8008},
+	}
+	expected, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(r, expected) {
+		t.Errorf("Expected %v got %v", expected, r)
 	}
 }
 
@@ -91,5 +118,19 @@ func TestNewMessageMessageBytes(t *testing.T) {
 	result := r.MessageBytes()
 	if !bytes.Equal(result, expected) {
 		t.Errorf("Expected %v got %v", expected, result)
+	}
+}
+
+func TestNewMessageRoundTrip(t *testing.T) {
+	r := NewMessage{
+		Sender:  &net.TCPAddr{IP: net.ParseIP("127.0.120.1"), Port: 8090},
+		Content: "Round Trip!",
+	}
+	expected, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(r, expected) {
+		t.Errorf("Expected %v got %v", expected, r)
 	}
 }
