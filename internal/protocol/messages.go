@@ -27,60 +27,119 @@ func (p Ping) PassToClient(c Client) error {
 	return c.HandlePing()
 }
 
-// JoinRequest represents a request from one peer to join the swarm
-// chat the other peer is in. The peer receiving this message should
-// respond with its own JoinResponse
-type JoinRequest struct{}
+// JoinSwarm represents a request from one peer to join the swarm
+type JoinSwarm struct{}
 
-// MessageBytes serializes JoinRequest
-func (r JoinRequest) MessageBytes() []byte {
+// MessageBytes serializes a JoinSwarm into a byte slice
+func (r JoinSwarm) MessageBytes() []byte {
 	return []byte{2}
 }
 
-// PassToClient just implements the visitor pattern
-func (r JoinRequest) PassToClient(c Client) error {
-	return c.HandleJoinRequest()
+// PassToClient implements the visitor pattern for JoinSwarm
+func (r JoinSwarm) PassToClient(client Client) error {
+	return client.HandleJoinSwarm()
 }
 
-// JoinResponse represents the response from a peer after a joinRequest
-type JoinResponse struct {
-	// A list of peers we can connect to, and that may try and connect
-	// with us
-	Peers []net.Addr
+// Referral represents a redirection to another node.
+//
+// After sending a JoinSwarm message, a peer receives this in response.
+// It will then contact the address in this node with a ConfirmPredecessor message.
+type Referral struct {
+	// Addr is the address of the node we're being referred to
+	Addr net.Addr
 }
 
-// MessageBytes serializes a JoinResponse
-func (resp JoinResponse) MessageBytes() []byte {
-	l := len(resp.Peers)
-	acc := []byte{3, byte(l >> 24), byte(l >> 16), byte(l >> 8), byte(l)}
-	for _, peer := range resp.Peers {
-		str := peer.String()
-		acc = append(acc, byte(len(str)))
-		acc = append(acc, []byte(str)...)
-	}
-	return acc
+// MessageBytes serializes a Refferal into a byte slice
+func (r Referral) MessageBytes() []byte {
+	addrString := r.Addr.String()
+	header := []byte{3, byte(len(addrString))}
+	return append(header, []byte(addrString)...)
 }
 
-// PassToClient implements the visitor pattern for JoinResponse
-func (resp JoinResponse) PassToClient(c Client) error {
-	return c.HandleJoinResponse(resp)
+// PassToClient implements the visitor pattern for Refferal
+func (r Referral) PassToClient(client Client) error {
+	return client.HandleReferral(r)
 }
 
-// NewMessage represents a message sent to a swarm by a peer
+// NewPredecessor is used to alert a sucessor node of a new replacement.
+//
+// After being contacted by a new node interested in joining the swarm,
+// a node will send this message to its Successor, allowing that Successor
+// to be aware of that new node. When the new node contacts that Successor,
+// the Successor can replace this node with the newly joined one.
+type NewPredecessor struct {
+	// Addr is the node we're being made aware of
+	Addr net.Addr
+}
+
+// MessageBytes serializes a NewPredecessor
+func (r NewPredecessor) MessageBytes() []byte {
+	addrString := r.Addr.String()
+	header := []byte{4, byte(len(addrString))}
+	return append(header, []byte(addrString)...)
+}
+
+// PassToClient implements the visitor pattern for NewPredecessor
+func (r NewPredecessor) PassToClient(client Client) error {
+	return client.HandleNewPredecessor(r)
+}
+
+// ConfirmPredecessor is used by a joining need to finalize that process
+//
+// It contacts the node contained in Referral using this message, and
+// once that node receieves a NewPredecessor message with the same address
+// as this joining node, then it becomes the new Predecessor.
+type ConfirmPredecessor struct{}
+
+// MessageBytes serializes a ConfirmPredecessor
+func (r ConfirmPredecessor) MessageBytes() []byte {
+	return []byte{5}
+}
+
+// PassToClient implements the visitor pattern for ConfirmPredecessor
+func (r ConfirmPredecessor) PassToClient(client Client) error {
+	return client.HandleConfirmPredecessor()
+}
+
+// NewMessage allows us to send new text messages across the swarm
 type NewMessage struct {
+	// Sender is the node that sent this message
+	Sender net.Addr
+	// Content is the actual text content of the message
 	Content string
 }
 
 // MessageBytes serializes a NewMessage
-func (req NewMessage) MessageBytes() []byte {
-	l := len(req.Content)
-	acc := []byte{4, byte(l >> 24), byte(l >> 16), byte(l >> 8), byte(l)}
-	return append(acc, []byte(req.Content)...)
+func (r NewMessage) MessageBytes() []byte {
+	senderString := r.Sender.String()
+	bytes := []byte{6, byte(len(senderString))}
+	bytes = append(bytes, []byte(senderString)...)
+	bytes = append(bytes, byte(len(r.Content)))
+	bytes = append(bytes, []byte(r.Content)...)
+	return bytes
 }
 
 // PassToClient implements the visitor pattern for NewMessage
-func (req NewMessage) PassToClient(c Client) error {
-	return c.HandleNewMessage(req)
+func (r NewMessage) PassToClient(client Client) error {
+	return client.HandleNewMessage(r)
+}
+
+func readAddr(r io.Reader, addrLen byte, slice []byte, buf []byte) (net.Addr, error) {
+	addrBuf := make([]byte, 0, addrLen)
+	addrBuf = append(addrBuf, slice[:addrLen]...)
+	for byte(len(addrBuf)) < addrLen {
+		amount, err := r.Read(buf)
+		if err != nil {
+			return nil, err
+		}
+		addrBuf = append(addrBuf, buf[:amount]...)
+	}
+	addrString := string(addrBuf[:addrLen])
+	addr, err := net.ResolveTCPAddr("tcp", addrString)
+	if err != nil {
+		return nil, err
+	}
+	return addr, nil
 }
 
 // ReadMessage reads bytes into a Message
@@ -98,43 +157,48 @@ func ReadMessage(r io.Reader) (Message, error) {
 	case 1:
 		res = Ping{}
 	case 2:
-		res = JoinRequest{}
+		res = JoinSwarm{}
 	case 3:
-		peerCount := uint(slice[1]) << 24
-		peerCount |= uint(slice[2]) << 16
-		peerCount |= uint(slice[3]) << 8
-		peerCount |= uint(slice[4])
-		slice = slice[5:]
-		var peers []net.Addr
-		for uint(len(peers)) < peerCount {
-			length := slice[0]
-			slice = slice[1:]
-			for len(slice) < 256 && byte(len(slice)) < length {
-				newBuf := make([]byte, len(slice))
-				copy(newBuf, slice)
-				slice = newBuf
-				amount, err := r.Read(buf)
-				if err != nil {
-					return nil, err
-				}
-				slice = append(slice, buf[:amount]...)
-			}
-			addrString := string(slice[:length])
-			// TODO: add a port field here instead of parsing the port
-			addr, err := net.ResolveTCPAddr("tcp", addrString)
+		addrLen := slice[1]
+		slice = slice[2:]
+		addr, err := readAddr(r, addrLen, slice, buf)
+		if err != nil {
+			return nil, err
+		}
+		res = Referral{Addr: addr}
+	case 4:
+		addrLen := slice[1]
+		slice = slice[2:]
+		addr, err := readAddr(r, addrLen, slice, buf)
+		if err != nil {
+			return nil, err
+		}
+		res = NewPredecessor{Addr: addr}
+	case 5:
+		res = ConfirmPredecessor{}
+	case 6:
+		addrLen := slice[1]
+		slice = slice[2:]
+		addrBuf := make([]byte, 0, addrLen)
+		addrBuf = append(addrBuf, slice[:addrLen]...)
+		for byte(len(addrBuf)) < addrLen {
+			amount, err := r.Read(buf)
 			if err != nil {
 				return nil, err
 			}
-			peers = append(peers, addr)
-			slice = slice[length:]
+			addrBuf = append(addrBuf, buf[:amount]...)
 		}
-		res = JoinResponse{peers}
-	case 4:
-		length := uint(slice[1]) << 24
-		length |= uint(slice[2]) << 16
-		length |= uint(slice[3]) << 8
-		length |= uint(slice[4])
-		slice = slice[5:]
+		addrString := string(addrBuf[:addrLen])
+		addr, err := net.ResolveTCPAddr("tcp", addrString)
+		if err != nil {
+			return nil, err
+		}
+		slice = addrBuf[addrLen:]
+		length := uint(slice[0]) << 24
+		length |= uint(slice[1]) << 16
+		length |= uint(slice[2]) << 8
+		length |= uint(slice[3])
+		slice = slice[4:]
 		stringBuf := make([]byte, 0, length)
 		stringBuf = append(stringBuf, slice...)
 		for uint(len(stringBuf)) < length {
@@ -144,7 +208,8 @@ func ReadMessage(r io.Reader) (Message, error) {
 			}
 			stringBuf = append(stringBuf, buf[:amount]...)
 		}
-		res = NewMessage{Content: string(stringBuf)}
+		content := string(stringBuf[:length])
+		res = NewMessage{Sender: addr, Content: content}
 	}
 	return res, nil
 }

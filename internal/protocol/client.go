@@ -5,10 +5,14 @@ package protocol
 type Client interface {
 	// Handle a ping message from the peer
 	HandlePing() error
-	// Handle a request to join a swarm
-	HandleJoinRequest() error
-	// Handle the response to a join request
-	HandleJoinResponse(JoinResponse) error
-	// Handle a new message from a peer
+	// Handle a JoinSwarm message
+	HandleJoinSwarm() error
+	// Handle a Referral message
+	HandleReferral(Referral) error
+	// Handle a NewPredecessor message
+	HandleNewPredecessor(NewPredecessor) error
+	// Handle a ConfirmPredecessor message
+	HandleConfirmPredecessor() error
+	// Handle a NewMessage message
 	HandleNewMessage(NewMessage) error
 }
