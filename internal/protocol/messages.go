@@ -114,7 +114,8 @@ func (r NewMessage) MessageBytes() []byte {
 	senderString := r.Sender.String()
 	bytes := []byte{6, byte(len(senderString))}
 	bytes = append(bytes, []byte(senderString)...)
-	bytes = append(bytes, byte(len(r.Content)))
+	cLen := len(r.Content)
+	bytes = append(bytes, byte(cLen>>24), byte(cLen>>16), byte(cLen>>8), byte(cLen))
 	bytes = append(bytes, []byte(r.Content)...)
 	return bytes
 }
@@ -179,6 +180,7 @@ func ReadMessage(r io.Reader) (Message, error) {
 	case 6:
 		addrLen := slice[1]
 		slice = slice[2:]
+		// We can't reuse the function because we need to modify slice
 		addrBuf := make([]byte, 0, addrLen)
 		addrBuf = append(addrBuf, slice[:addrLen]...)
 		for byte(len(addrBuf)) < addrLen {

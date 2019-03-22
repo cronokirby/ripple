@@ -45,8 +45,6 @@ Referral contains the address of the node to send a **ConfirmPredecessor** to
 | Type      | 1      | 0x05 for ConfirmPredecessor |
 
 ## NewMessage
-Once again we prefix the message string with its length
-
 | Field      | Length | Description           |
 | ---------- | ------ | --------------------- |
 | Type       | 1      | 0x06 for NewMessage   |
