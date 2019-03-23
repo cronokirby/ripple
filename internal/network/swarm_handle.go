@@ -355,6 +355,116 @@ func (client *joiningClient) joinSwarm(start, me net.Addr) (*normalClient, error
 	return &normalClient{state: state, latest: makeSyncConn()}, nil
 }
 
+// lonelyClient is a client starting a new swarm, with no peers
+//
+// we need to treat this case slightly differently from a normalClient.
+// The case with just 2 peers should "just work" with the normalClient code.
+type lonelyClient struct {
+	// if we needConfirmation from a peer
+	needConfirmation bool
+	// me is the address of this client
+	me net.Addr
+	// first starts off nil, and becomes filled as we try and get our first peer
+	first net.Conn
+	log   *log.Logger
+	// listener should be reused after becoming not lonely
+	listener net.Listener
+}
+
+// HandlePing is unexpected
+func (client *lonelyClient) HandlePing() error {
+	return fmt.Errorf("Unexpected Ping in lonelyClient")
+}
+
+// HandleJoinSwarm allows us to start accepting our first peer
+//
+// If we've already receieved this once though, we can't continue
+func (client *lonelyClient) HandleJoinSwarm() error {
+	if client.needConfirmation {
+		return fmt.Errorf("Unexpected JoinSwarm in lonelyClient (already received)")
+	}
+	referral := protocol.Referral{Addr: client.me}
+	if err := sendMessage(client.first, referral); err != nil {
+		return err
+	}
+	client.needConfirmation = true
+	return nil
+}
+
+// HandleReferral isn't expected at this point
+func (client *lonelyClient) HandleReferral(protocol.Referral) error {
+	return fmt.Errorf("Unexpected Referral in lonelyClient")
+}
+
+// HandleNewPredecessor is unexpected at this point
+func (client *lonelyClient) HandleNewPredecessor(protocol.NewPredecessor) error {
+	return fmt.Errorf("Unexpected NewPredecessor in lonelyClient")
+}
+
+// HandleConfirmPredecessor allows us to continue and finish accepting our first peer
+//
+// We must have already received a JoinSwarm message to be able to accept this
+func (client *lonelyClient) HandleConfirmPredecessor() error {
+	if !client.needConfirmation {
+		return fmt.Errorf("Unexpected ConfirmPredecessor in lonelyClient (no joinSwarm)")
+	}
+	return nil
+}
+
+// ConfirmReferral is unexpected at this time
+func (client *lonelyClient) HandleConfirmReferral() error {
+	return fmt.Errorf("Unexpected ConfirmReferral in lonelyClient")
+}
+
+// HandleNewMessage is unexpected at this time
+func (client *lonelyClient) HandleNewMessage(protocol.NewMessage) error {
+	return fmt.Errorf("Unexpected NewMessage in lonelyClient")
+}
+
+func (client *lonelyClient) receiveMsg(conn net.Conn) error {
+	msg, err := protocol.ReadMessage(conn)
+	if err != nil {
+		return err
+	}
+	if err := msg.PassToClient(client); err != nil {
+		return err
+	}
+	return nil
+}
+
+// startSwarm starts a new swarm
+//
+// make sure to reuse the listener we set in lonelyClient after this though
+func (client *lonelyClient) startSwarm() (*normalClient, error) {
+	l, err := net.Listen(client.me.Network(), client.me.String())
+	if err != nil {
+		return nil, err
+	}
+	client.listener = l
+	for client.first == nil {
+		client.needConfirmation = false
+		conn, err := l.Accept()
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		client.first = conn
+		if err := client.receiveMsg(conn); err != nil {
+			log.Println(err)
+			client.first = nil
+			continue
+		}
+		if err := client.receiveMsg(conn); err != nil {
+			log.Println(err)
+			client.first = nil
+			continue
+		}
+	}
+	// TODO: fill this in
+	state := &clientState{me: client.me, pred: client.first, succ: client.first}
+	return &normalClient{log: client.log, state: state, latest: makeSyncConn()}, nil
+}
+
 // SwarmHandle allows us to interact with a swarm
 //
 // The main ways of creating one are to join an existing one, or create
@@ -376,6 +486,20 @@ func JoinSwarm(log *log.Logger, start, you net.Addr) (*SwarmHandle, error) {
 	normal.log = log
 	normal.receiver = protocol.NilReceiver{}
 	normal.startLoops(nil)
+	return &SwarmHandle{normal}, nil
+}
+
+// CreateSwarm starts a new swarm by listening at an address
+//
+// This will block until the first peer joins the swarm.
+func CreateSwarm(log *log.Logger, you net.Addr) (*SwarmHandle, error) {
+	lonely := &lonelyClient{me: you, log: log}
+	normal, err := lonely.startSwarm()
+	if err != nil {
+		return nil, err
+	}
+	normal.receiver = protocol.NilReceiver{}
+	normal.startLoops(lonely.listener)
 	return &SwarmHandle{normal}, nil
 }
 
