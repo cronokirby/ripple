@@ -124,6 +124,12 @@ func (client *originClient) HandleReferral(msg protocol.Referral) error {
 	)
 }
 
+func (client *originClient) clearLatest() {
+	client.latest.empty()
+	client.state.latestIsPred = false
+	client.state.latestIsSucc = false
+}
+
 func (client *originClient) swapPredecessorsIfReady() error {
 	if !client.latest.isEmpty() && client.state.latestIsPred {
 		latestAddr := client.latest.conn.RemoteAddr()
@@ -140,9 +146,7 @@ func (client *originClient) swapPredecessorsIfReady() error {
 			return err
 		}
 		client.state.pred = client.latest.conn
-		client.latest.empty()
-		client.state.latestIsPred = false
-		client.state.latestIsSucc = false
+		client.clearLatest()
 	}
 	return nil
 }
@@ -186,4 +190,19 @@ func (client *originClient) HandleConfirmPredecessor() error {
 	defer client.state.mu.Unlock()
 	client.state.latestIsPred = true
 	return client.swapPredecessorsIfReady()
+}
+
+// HandleConfirmReferral allows us to replace our Successor
+func (client *originClient) HandleConfirmReferral() error {
+	if client.origin != fromSucc || !client.state.latestIsSucc {
+		return fmt.Errorf(
+			"Unexpected ConfirmReferral message %s",
+			client.fmtOrigin(),
+		)
+	}
+	client.state.mu.Lock()
+	defer client.state.mu.Unlock()
+	client.state.succ = client.latest.conn
+	client.clearLatest()
+	return nil
 }
