@@ -322,7 +322,7 @@ func (client *joiningClient) HandleNewMessage(msg protocol.NewMessage) error {
 }
 
 // joinSwarm can't and won't complete the logging and receiever fields of client
-func (client *joiningClient) joinSwarm(me net.Addr, start net.Addr) (*normalClient, error) {
+func (client *joiningClient) joinSwarm(start, me net.Addr) (*normalClient, error) {
 	predConn, err := net.Dial(start.Network(), start.String())
 	if err != nil {
 		return nil, err
@@ -347,4 +347,33 @@ func (client *joiningClient) joinSwarm(me net.Addr, start net.Addr) (*normalClie
 	}
 	state := &clientState{me: me, pred: predConn, succ: succConn}
 	return &normalClient{state: state, latest: makeSyncConn()}, nil
+}
+
+// SwarmHandle allows us to interact with a swarm
+//
+// The main ways of creating one are to join an existing one, or create
+// a new swarm by acting as the first node.
+type SwarmHandle struct {
+	client *normalClient
+}
+
+// JoinSwarm creates a new SwarmHandle by joining an existing swarm
+//
+// It takes a node to enter the swarm with, and an address to listen on
+// after joining.
+func JoinSwarm(log *log.Logger, start, you net.Addr) (*SwarmHandle, error) {
+	joining := &joiningClient{}
+	normal, err := joining.joinSwarm(start, you)
+	if err != nil {
+		return nil, err
+	}
+	normal.log = log
+	normal.receiver = protocol.NilReceiver{}
+	normal.startLoops()
+	return &SwarmHandle{normal}, nil
+}
+
+// SetReceiver changes the receiever in a swarm handle to do something useful
+func (swarm *SwarmHandle) SetReceiver(receiver protocol.ContentReceiver) {
+	swarm.client.receiver = receiver
 }

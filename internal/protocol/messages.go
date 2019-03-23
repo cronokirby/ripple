@@ -256,3 +256,9 @@ type PrintReceiver struct{}
 func (p PrintReceiver) ReceiveContent(content string) {
 	fmt.Println(content)
 }
+
+// NilReceiver simply does nothing on receieving content
+type NilReceiver struct{}
+
+// ReceiveContent does nothing
+func (NilReceiver) ReceiveContent(content string) {}
