@@ -37,10 +37,15 @@ func (conn *syncConn) empty() {
 }
 
 // fill will block until the connection is empty
-func (conn syncConn) fill(newConn net.Conn) {
+func (conn *syncConn) fill(newConn net.Conn) {
 	conn.muFill.Lock()
 	conn.conn = newConn
 	conn.muEmpty.Unlock()
+}
+
+// isEmpty checks if a syncConn contains nothing
+func (conn *syncConn) isEmpty() bool {
+	return conn.conn == nil
 }
 
 // peerList is a list of peers that can be updated concurrently.

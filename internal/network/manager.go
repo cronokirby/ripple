@@ -24,8 +24,7 @@ func sameAddr(a net.Addr, b net.Addr) bool {
 
 // clientState holds the state a client needs in normal operation
 type clientState struct {
-	log *log.Logger
-	mu  sync.Mutex
+	mu sync.Mutex
 	// newPred is the address of a node trying to become our Predecessor
 	newPred net.Addr
 	// predConn is the connection we have with the current Predecessor
@@ -34,10 +33,15 @@ type clientState struct {
 	succ net.Conn
 	// latestIsSucc is true if the latest conn is trying to replace the Successor
 	latestIsSucc bool
+	// latestIsPred is true if the latest conn is trying to replace the Predecessor
+	//
+	// this is mutually exclusive with latestIsSucc, but both fields can be false
+	latestIsPred bool
 }
 
 // client contains the information needed in normal operation
 type client struct {
+	log *log.Logger
 	// state represents the mutable state under a single lock
 	state *clientState
 	// latest has its own locking mechanism
@@ -48,6 +52,7 @@ type client struct {
 type originClient struct {
 	// origin holds the source of the message
 	origin int
+	log    *log.Logger
 	state  *clientState
 	// latest is the connection trying to join us
 	latest *syncConn
@@ -57,7 +62,8 @@ type originClient struct {
 func (client client) withOrigin(origin int) originClient {
 	state := client.state
 	latest := client.latest
-	return originClient{origin, state, latest}
+	log := client.log
+	return originClient{origin, log, state, latest}
 }
 
 // fmtOrigin is mainly useful for debugging purposes
@@ -116,4 +122,46 @@ func (client *originClient) HandleReferral(msg protocol.Referral) error {
 		"Unexpected Referral message %s",
 		client.fmtOrigin(),
 	)
+}
+
+// HandleNewPredecessor is handled from our Predecessor
+//
+// If we have receieved a ConfirmPredecessor already, we can finalise
+// the replacement of our Predecessor.
+func (client *originClient) HandleNewPredecessor(msg protocol.NewPredecessor) error {
+	if client.origin != fromPred {
+		return fmt.Errorf(
+			"Unexpected NewPredecessor message %s",
+			client.fmtOrigin(),
+		)
+	}
+	if client.state.newPred != nil {
+		client.log.Printf(
+			"Replacing newPred; existing: %v; new: %v\n",
+			client.state.newPred, msg.Addr,
+		)
+	}
+	client.state.mu.Lock()
+	defer client.state.mu.Unlock()
+	client.state.newPred = msg.Addr
+	if !client.latest.isEmpty() && client.state.latestIsPred {
+		latestAddr := client.latest.conn.RemoteAddr()
+		announceAddr := client.state.newPred
+		if !sameAddr(latestAddr, announceAddr) {
+			return fmt.Errorf(
+				"Mismatched Predecessors; announced: %v; connected: %v",
+				announceAddr,
+				latestAddr,
+			)
+		}
+		confirm := protocol.ConfirmReferral{}
+		if err := sendMessage(client.state.pred, confirm); err != nil {
+			return err
+		}
+		client.state.pred = client.latest.conn
+		client.latest.empty()
+		client.state.latestIsPred = false
+		client.state.latestIsSucc = false
+	}
+	return nil
 }
