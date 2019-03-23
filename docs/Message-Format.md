@@ -44,10 +44,15 @@ Referral contains the address of the node to send a **ConfirmPredecessor** to
 | --------- | ------ | ----------------------- |
 | Type      | 1      | 0x05 for ConfirmPredecessor |
 
+## ConfirmReferral
+| Field     | Length | Description             |
+| --------- | ------ | ----------------------- |
+| Type      | 1      | 0x06 for ConfirmReferral |
+
 ## NewMessage
 | Field      | Length | Description           |
 | ---------- | ------ | --------------------- |
-| Type       | 1      | 0x06 for NewMessage   |
+| Type       | 1      | 0x07 for NewMessage   |
 | AddrLength | 1      | Unsigned byte, how long the following field is |
 | Addr       | AddrLength | The address for this node |
 | Length     | 4      | Unsigned 32 bit integer, length of following field |

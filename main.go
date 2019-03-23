@@ -1,16 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"os"
-
-	"github.com/cronokirby/ripple/internal/protocol"
-
-	"github.com/cronokirby/ripple/internal/network"
 )
 
+/**
 func interact(j *network.Joiner) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -19,8 +15,13 @@ func interact(j *network.Joiner) {
 		j.SendContent(text)
 	}
 }
+**/
 
 func main() {
+	res, _ := net.ResolveTCPAddr("tcp", "localhost:8080")
+	fmt.Println(res)
+	os.Exit(1)
+	/**
 	args := os.Args
 	argLen := len(args)
 	if argLen < 2 {
@@ -53,4 +54,5 @@ func main() {
 	default:
 		fmt.Println("Unkown command")
 	}
+	*/
 }

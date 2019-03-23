@@ -1,13 +1,6 @@
 package network
 
-import (
-	"errors"
-	"fmt"
-	"net"
-
-	"github.com/cronokirby/ripple/internal/protocol"
-)
-
+/**
 // Joiner represents a client that tries and join a new swarm
 type Joiner struct {
 	peers       *peerList
@@ -233,3 +226,4 @@ func (client *normalClient) innerLoop(conn net.Conn) error {
 		}
 	}
 }
+**/
