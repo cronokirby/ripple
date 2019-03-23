@@ -148,6 +148,7 @@ func (client *originClient) swapPredecessorsIfReady() error {
 		if err := sendMessage(client.state.pred, confirm); err != nil {
 			return err
 		}
+		client.state.pred.Close()
 		client.state.pred = client.latest.conn
 		client.clearLatest()
 	}
@@ -206,6 +207,7 @@ func (client *originClient) HandleConfirmReferral() error {
 	}
 	client.state.mu.Lock()
 	defer client.state.mu.Unlock()
+	client.state.succ.Close()
 	client.state.succ = client.latest.conn
 	client.clearLatest()
 	return nil
