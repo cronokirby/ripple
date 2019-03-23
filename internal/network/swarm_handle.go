@@ -477,7 +477,7 @@ type SwarmHandle struct {
 //
 // It takes a node to enter the swarm with, and an address to listen on
 // after joining.
-func JoinSwarm(log *log.Logger, start, you net.Addr) (*SwarmHandle, error) {
+func JoinSwarm(log *log.Logger, you, start net.Addr) (*SwarmHandle, error) {
 	joining := &joiningClient{}
 	normal, err := joining.joinSwarm(start, you)
 	if err != nil {

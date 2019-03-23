@@ -1,58 +1,72 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"os"
+
+	"github.com/cronokirby/ripple/internal/network"
 )
 
-/**
-func interact(j *network.Joiner) {
+func interact(swarm *network.SwarmHandle) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		scanner.Scan()
 		text := scanner.Text()
-		j.SendContent(text)
+		swarm.SendContent(text)
 	}
 }
-**/
 
 func main() {
 	res, _ := net.ResolveTCPAddr("tcp", "localhost:8080")
 	fmt.Println(res)
 	os.Exit(1)
-	/**
 	args := os.Args
 	argLen := len(args)
 	if argLen < 2 {
 		fmt.Println("Insufficient arguments")
 		os.Exit(1)
 	}
-	joiner := network.NewJoiner(&protocol.PrintReceiver{})
+	writer := bufio.NewWriter(os.Stdout)
+	logger := log.New(writer, "", log.Flags())
 	switch args[1] {
 	case "listen":
 		if argLen < 3 {
 			fmt.Println("Insufficient arguments")
 			os.Exit(1)
 		}
-		fmt.Println("Starting new swarm...")
-		go joiner.Listen(args[2])
-		interact(joiner)
+		me, err := net.ResolveTCPAddr("tcp", args[2])
+		if err != nil {
+			logger.Fatalln("Failed to resolve own address: ", err)
+		}
+		logger.Println("Starting new swarm...")
+		swarm, err := network.CreateSwarm(logger, me)
+		if err != nil {
+			logger.Fatalln("Failed to join swarm: ", err)
+		}
+		interact(swarm)
 	case "connect":
 		if argLen < 4 {
 			fmt.Println("Insufficient arguments")
 			os.Exit(1)
 		}
-		remote, err := net.ResolveTCPAddr("tcp", args[3])
+		me, err := net.ResolveTCPAddr("tcp", args[2])
 		if err != nil {
-			fmt.Println("Failed to join swarm: ", err)
-			os.Exit(1)
+			logger.Fatalln("Failed to resolve own address: ", err)
 		}
-		err = joiner.Start(args[2], remote)
-		fmt.Println("Succesfully joined swarm!")
-		interact(joiner)
+		them, err := net.ResolveTCPAddr("tcp", args[3])
+		if err != nil {
+			logger.Fatalln("Failed to resolve peer address: ", err)
+		}
+		logger.Println("Joining swarm...")
+		swarm, err := network.JoinSwarm(logger, me, them)
+		if err != nil {
+			logger.Fatalln("Failed to join swarm: ", err)
+		}
+		interact(swarm)
 	default:
 		fmt.Println("Unkown command")
 	}
-	*/
 }
