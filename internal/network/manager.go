@@ -109,3 +109,11 @@ func (client *originClient) HandleJoinSwarm() error {
 	}
 	return nil
 }
+
+// HandleReferral is always ignored, because we're not joining a swarm
+func (client *originClient) HandleReferral(msg protocol.Referral) error {
+	return fmt.Errorf(
+		"Unexpected Referral message %s",
+		client.fmtOrigin(),
+	)
+}
