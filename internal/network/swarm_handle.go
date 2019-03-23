@@ -60,6 +60,7 @@ type normalClient struct {
 // This is useful when transitioning from being the first node in a swarm,
 // to normal operation.
 func (client *normalClient) startLoops(l net.Listener) {
+	client.log.Println("Starting loops...")
 	go func() {
 		if l == nil {
 			newL, err := net.Listen("tcp", client.state.me.String())
@@ -136,9 +137,9 @@ func (client *normalClient) withOrigin(origin int) *originClient {
 func (client *originClient) fmtOrigin() string {
 	switch client.origin {
 	case fromPred:
-		return fmt.Sprintf("fromPred: %v", client.state.pred)
+		return fmt.Sprintf("fromPred: %v", client.state.pred.RemoteAddr())
 	case fromSucc:
-		return fmt.Sprintf("fromSucc: %v", client.state.succ)
+		return fmt.Sprintf("fromSucc: %v", client.state.succ.RemoteAddr())
 	case fromNew:
 		return fmt.Sprintf("fromNew: %v", client.latest)
 	case fromNewPred:
@@ -344,9 +345,14 @@ func (client *joiningClient) joinSwarm(start, me net.Addr) (*normalClient, error
 		return nil, err
 	}
 	succAddr := client.referral
-	succConn, err := net.Dial(succAddr.Network(), succAddr.String())
-	if err != nil {
-		return nil, err
+	succConn := predConn
+	// this is usually the case
+	if !sameAddr(succAddr, start) {
+		conn, err := net.Dial(succAddr.Network(), succAddr.String())
+		if err != nil {
+			return nil, err
+		}
+		succConn = conn
 	}
 	if err := sendMessage(succConn, protocol.ConfirmPredecessor{}); err != nil {
 		return nil, err
@@ -426,6 +432,7 @@ func (client *lonelyClient) receiveMsg(conn net.Conn) error {
 	if err != nil {
 		return err
 	}
+	client.log.Printf("Receieved: %#v", msg)
 	if err := msg.PassToClient(client); err != nil {
 		return err
 	}
@@ -445,17 +452,18 @@ func (client *lonelyClient) startSwarm() (*normalClient, error) {
 		client.needConfirmation = false
 		conn, err := l.Accept()
 		if err != nil {
-			log.Println(err)
+			client.log.Println(err)
 			continue
 		}
 		client.first = conn
 		if err := client.receiveMsg(conn); err != nil {
-			log.Println(err)
+			client.log.Println(err)
 			client.first = nil
 			continue
 		}
+		sendMessage(conn, protocol.Referral{Addr: client.me})
 		if err := client.receiveMsg(conn); err != nil {
-			log.Println(err)
+			client.log.Println(err)
 			client.first = nil
 			continue
 		}

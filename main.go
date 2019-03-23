@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/cronokirby/ripple/internal/network"
+	"github.com/cronokirby/ripple/internal/protocol"
 )
 
 func interact(swarm *network.SwarmHandle) {
@@ -20,17 +21,13 @@ func interact(swarm *network.SwarmHandle) {
 }
 
 func main() {
-	res, _ := net.ResolveTCPAddr("tcp", "localhost:8080")
-	fmt.Println(res)
-	os.Exit(1)
 	args := os.Args
 	argLen := len(args)
 	if argLen < 2 {
 		fmt.Println("Insufficient arguments")
 		os.Exit(1)
 	}
-	writer := bufio.NewWriter(os.Stdout)
-	logger := log.New(writer, "", log.Flags())
+	logger := log.New(os.Stdout, "", log.Flags())
 	switch args[1] {
 	case "listen":
 		if argLen < 3 {
@@ -46,6 +43,7 @@ func main() {
 		if err != nil {
 			logger.Fatalln("Failed to join swarm: ", err)
 		}
+		swarm.SetReceiver(protocol.PrintReceiver{})
 		interact(swarm)
 	case "connect":
 		if argLen < 4 {
@@ -65,8 +63,9 @@ func main() {
 		if err != nil {
 			logger.Fatalln("Failed to join swarm: ", err)
 		}
+		swarm.SetReceiver(protocol.PrintReceiver{})
 		interact(swarm)
 	default:
-		fmt.Println("Unkown command")
+		fmt.Println("Unknown command")
 	}
 }

@@ -197,7 +197,6 @@ func ReadMessage(r io.Reader) (Message, error) {
 	case 7:
 		addrLen := slice[1]
 		slice = slice[2:]
-		fmt.Println(len(slice), addrLen)
 		// We can't reuse the function because we need to modify slice
 		addrBuf := make([]byte, 0, addrLen)
 		addrBuf = append(addrBuf, slice[:addrLen]...)
@@ -218,7 +217,6 @@ func ReadMessage(r io.Reader) (Message, error) {
 		if err != nil {
 			return nil, err
 		}
-		fmt.Println(len(slice))
 		length := uint(slice[0]) << 24
 		length |= uint(slice[1]) << 16
 		length |= uint(slice[2]) << 8
