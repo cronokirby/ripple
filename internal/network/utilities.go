@@ -8,7 +8,9 @@ import (
 	"github.com/cronokirby/ripple/internal/protocol"
 )
 
-// syncPeer lets us manage access to an arriving peer
+// syncConn lets us manage access to an arriving peer
+//
+// the inner conn is safe to read, but not to modify
 type syncConn struct {
 	conn    net.Conn
 	muEmpty sync.Mutex
@@ -20,6 +22,11 @@ func makeSyncConn() *syncConn {
 	conn := &syncConn{}
 	conn.muEmpty.Lock()
 	return conn
+}
+
+// String formats a syncConn by printing the undlerying connection
+func (conn *syncConn) String() string {
+	return conn.String()
 }
 
 // empty will block until the connection is full
