@@ -1,6 +1,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -41,8 +42,8 @@ type clientState struct {
 	latestIsPred bool
 }
 
-// client contains the information needed in normal operation
-type client struct {
+// normalClient contains the information needed in normal operation
+type normalClient struct {
 	log *log.Logger
 	// broadcaster lets us print the text messages
 	receiver protocol.ContentReceiver
@@ -64,7 +65,7 @@ type originClient struct {
 }
 
 // withOrigin embellishes a client with an origin
-func (client client) withOrigin(origin int) originClient {
+func (client *normalClient) withOrigin(origin int) originClient {
 	return originClient{origin, client.log, client.receiver, client.state, client.latest}
 }
 
@@ -279,4 +280,66 @@ func (client *originClient) listenTo(pred bool) {
 			log.Println(err)
 		}
 	}
+}
+
+// joiningClient is a client trying to join a swarm
+type joiningClient struct {
+	referral net.Addr
+}
+
+func (client *joiningClient) HandlePing() error {
+	return errors.New("Unexpected Ping message")
+}
+
+func (client *joiningClient) HandleJoinSwarm() error {
+	return errors.New("Unexpected JoinSwarm message")
+}
+
+func (client *joiningClient) HandleReferral(msg protocol.Referral) error {
+	client.referral = msg.Addr
+	return nil
+}
+
+func (client *joiningClient) HandleNewPredecessor(msg protocol.NewPredecessor) error {
+	return fmt.Errorf("Unexpected NewPredecessor message: %v", msg)
+}
+
+func (client *joiningClient) HandleConfirmPredecessor() error {
+	return errors.New("Unexpected ConfirmPredecessor message")
+}
+
+func (client *joiningClient) HandleConfirmReferral() error {
+	return errors.New("Unexpected ConfirmReferral message")
+}
+
+func (client *joiningClient) HandleNewMessage(msg protocol.NewMessage) error {
+	return fmt.Errorf("Unexpected NewMessage: %v", msg)
+}
+
+// joinSwarm can't and won't complete the logging and receiever fields of client
+func (client *joiningClient) joinSwarm(me net.Addr, start net.Addr) (*normalClient, error) {
+	predConn, err := net.Dial(start.Network(), start.String())
+	if err != nil {
+		return nil, err
+	}
+	if err := sendMessage(predConn, protocol.JoinSwarm{}); err != nil {
+		return nil, err
+	}
+	msg, err := protocol.ReadMessage(predConn)
+	if err != nil {
+		return nil, err
+	}
+	if err := msg.PassToClient(client); err != nil {
+		return nil, err
+	}
+	succAddr := client.referral
+	succConn, err := net.Dial(succAddr.Network(), succAddr.String())
+	if err != nil {
+		return nil, err
+	}
+	if err := sendMessage(succConn, protocol.ConfirmPredecessor{}); err != nil {
+		return nil, err
+	}
+	state := &clientState{me: me, pred: predConn, succ: succConn}
+	return &normalClient{state: state, latest: makeSyncConn()}, nil
 }
