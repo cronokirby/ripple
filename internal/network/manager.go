@@ -5,12 +5,16 @@ import (
 	"log"
 	"net"
 	"sync"
+
+	"github.com/cronokirby/ripple/internal/protocol"
 )
 
 const (
 	fromPred = iota
 	fromSucc
 	fromNew
+	fromNewPred
+	fromNewSucc
 )
 
 // sameAddr checks if 2 nodes are the same, by string equality
@@ -24,12 +28,10 @@ type clientState struct {
 	mu  sync.Mutex
 	// newPred is the address of a node trying to become our Predecessor
 	newPred net.Addr
-	// newPred is the connection we have with that node
-	newPredConn net.Conn
 	// predConn is the connection we have with the current Predecessor
-	predConn net.Conn
+	pred net.Conn
 	// succConn is the connection in front of us
-	succConn net.Conn
+	succ net.Conn
 	// latestIsSucc is true if the latest conn is trying to replace the Successor
 	latestIsSucc bool
 }
@@ -38,34 +40,39 @@ type clientState struct {
 type client struct {
 	// state represents the mutable state under a single lock
 	state *clientState
-	// latestConn has its own locking mechanism
-	latestConn *syncConn
+	// latest has its own locking mechanism
+	latest *syncConn
 }
 
 // originClient wraps a client with the origin of a message
 type originClient struct {
 	// origin holds the source of the message
-	origin     int
-	state      *clientState
-	latestConn *syncConn
+	origin int
+	state  *clientState
+	// latest is the connection trying to join us
+	latest *syncConn
 }
 
 // withOrigin embellishes a client with an origin
 func (client client) withOrigin(origin int) originClient {
 	state := client.state
-	latestConn := client.latestConn
-	return originClient{origin, state, latestConn}
+	latest := client.latest
+	return originClient{origin, state, latest}
 }
 
 // fmtOrigin is mainly useful for debugging purposes
 func (client *originClient) fmtOrigin() string {
 	switch client.origin {
 	case fromPred:
-		return fmt.Sprintf("fromPred: %v", client.state.predConn)
+		return fmt.Sprintf("fromPred: %v", client.state.pred)
 	case fromSucc:
-		return fmt.Sprintf("fromSucc: %v", client.state.succConn)
+		return fmt.Sprintf("fromSucc: %v", client.state.succ)
 	case fromNew:
-		return fmt.Sprintf("fromNew: %v", client.latestConn)
+		return fmt.Sprintf("fromNew: %v", client.latest)
+	case fromNewPred:
+		return fmt.Sprintf("fromNewPred: %v", client.latest)
+	case fromNewSucc:
+		return fmt.Sprintf("fromNewSucc: %v", client.latest)
 	default:
 		return "unknown"
 	}
@@ -77,10 +84,11 @@ func (client *originClient) HandlePing() error {
 	return nil
 }
 
-// HandleJoinSwarm just ignores the message.
+// HandleJoinSwarm should be accepted when it's coming from a new connection
 //
-// We could quit the client instead of just logging, but it's
-// a bit more resilient to keep chugging along.
+// We then promote the new peer to a node trying to replace our Successor,
+// and send a NewPredecessor message to that Successor, as well as a Referral
+// back to the new peer.
 func (client *originClient) HandleJoinSwarm() error {
 	if client.origin != fromNew {
 		return fmt.Errorf(
@@ -91,5 +99,13 @@ func (client *originClient) HandleJoinSwarm() error {
 	client.state.mu.Lock()
 	defer client.state.mu.Unlock()
 	client.state.latestIsSucc = true
+	referral := protocol.Referral{Addr: client.state.succ.RemoteAddr()}
+	if err := sendMessage(client.latest.conn, referral); err != nil {
+		return err
+	}
+	newPred := protocol.NewPredecessor{Addr: client.latest.conn.RemoteAddr()}
+	if err := sendMessage(client.state.succ, newPred); err != nil {
+		return err
+	}
 	return nil
 }
