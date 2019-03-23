@@ -8,6 +8,34 @@ import (
 	"github.com/cronokirby/ripple/internal/protocol"
 )
 
+// syncPeer lets us manage access to an arriving peer
+type syncConn struct {
+	conn    net.Conn
+	muEmpty sync.Mutex
+	muFill  sync.Mutex
+}
+
+// makeSyncConn constructs a valid syncConn in the empty state
+func makeSyncConn() *syncConn {
+	conn := &syncConn{}
+	conn.muEmpty.Lock()
+	return conn
+}
+
+// empty will block until the connection is full
+func (conn *syncConn) empty() {
+	conn.muEmpty.Lock()
+	conn.conn = nil
+	conn.muFill.Unlock()
+}
+
+// fill will block until the connection is empty
+func (conn syncConn) fill(newConn net.Conn) {
+	conn.muFill.Lock()
+	conn.conn = newConn
+	conn.muEmpty.Unlock()
+}
+
 // peerList is a list of peers that can be updated concurrently.
 // the zero value of peerList is valid
 type peerList struct {
