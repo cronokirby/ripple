@@ -518,7 +518,7 @@ func (swarm *SwarmHandle) SetReceiver(receiver protocol.ContentReceiver) {
 
 // SendContent allows us to send a piece of text to the rest of the swarm
 func (swarm *SwarmHandle) SendContent(content string) {
-	msg := protocol.NewMessage{swarm.client.state.me, content}
+	msg := protocol.NewMessage{Sender: swarm.client.state.me, Content: content}
 	// ignore errors
 	sendMessage(swarm.client.state.succ, msg)
 }
