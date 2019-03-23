@@ -383,3 +383,10 @@ func JoinSwarm(log *log.Logger, start, you net.Addr) (*SwarmHandle, error) {
 func (swarm *SwarmHandle) SetReceiver(receiver protocol.ContentReceiver) {
 	swarm.client.receiver = receiver
 }
+
+// SendContent allows us to send a piece of text to the rest of the swarm
+func (swarm *SwarmHandle) SendContent(content string) {
+	msg := protocol.NewMessage{swarm.client.state.me, content}
+	// ignore errors
+	sendMessage(swarm.client.state.succ, msg)
+}
