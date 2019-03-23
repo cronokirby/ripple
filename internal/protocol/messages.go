@@ -101,6 +101,21 @@ func (r ConfirmPredecessor) PassToClient(client Client) error {
 	return client.HandleConfirmPredecessor()
 }
 
+// ConfirmReferral is used by a node to confirm replacement of its Predecessor
+//
+// After receiving this from its Successor, a node can replace it.
+type ConfirmReferral struct{}
+
+// MessageBytes serializes a ConfirmReferral
+func (r ConfirmReferral) MessageBytes() []byte {
+	return []byte{6}
+}
+
+// PassToClient implements the visitor pattern for ConfirmReferral
+func (r ConfirmReferral) PassToClient(client Client) error {
+	return client.HandleConfirmReferral()
+}
+
 // NewMessage allows us to send new text messages across the swarm
 type NewMessage struct {
 	// Sender is the node that sent this message
@@ -112,7 +127,7 @@ type NewMessage struct {
 // MessageBytes serializes a NewMessage
 func (r NewMessage) MessageBytes() []byte {
 	senderString := r.Sender.String()
-	bytes := []byte{6, byte(len(senderString))}
+	bytes := []byte{7, byte(len(senderString))}
 	bytes = append(bytes, []byte(senderString)...)
 	cLen := len(r.Content)
 	bytes = append(bytes, byte(cLen>>24), byte(cLen>>16), byte(cLen>>8), byte(cLen))
@@ -178,6 +193,8 @@ func ReadMessage(r io.Reader) (Message, error) {
 	case 5:
 		res = ConfirmPredecessor{}
 	case 6:
+		res = ConfirmReferral{}
+	case 7:
 		addrLen := slice[1]
 		slice = slice[2:]
 		fmt.Println(len(slice), addrLen)

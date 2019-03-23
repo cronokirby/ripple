@@ -13,6 +13,8 @@ type Client interface {
 	HandleNewPredecessor(NewPredecessor) error
 	// Handle a ConfirmPredecessor message
 	HandleConfirmPredecessor() error
+	// Handle a ConfirmReferral message
+	HandleConfirmReferral() error
 	// Handle a NewMessage message
 	HandleNewMessage(NewMessage) error
 }

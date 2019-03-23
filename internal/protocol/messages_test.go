@@ -97,6 +97,15 @@ func TestConfirmPredecessorMessageBytes(t *testing.T) {
 	}
 }
 
+func TestConfirmReferralMessageBytes(t *testing.T) {
+	r := ConfirmReferral{}
+	expected := []byte{6}
+	result := r.MessageBytes()
+	if !bytes.Equal(result, expected) {
+		t.Errorf("Expected %v got %v", expected, result)
+	}
+}
+
 func TestNewMessageMessageBytes(t *testing.T) {
 	r := NewMessage{
 		Sender:  &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1234},
@@ -104,7 +113,7 @@ func TestNewMessageMessageBytes(t *testing.T) {
 	}
 	addrString := "127.0.0.1:1234"
 	content := "Hello World!"
-	expected := []byte{6, byte(len(addrString))}
+	expected := []byte{7, byte(len(addrString))}
 	expected = append(expected, []byte(addrString)...)
 	contentLen := len(content)
 	expected = append(
