@@ -124,26 +124,7 @@ func (client *originClient) HandleReferral(msg protocol.Referral) error {
 	)
 }
 
-// HandleNewPredecessor is handled from our Predecessor
-//
-// If we have receieved a ConfirmPredecessor already, we can finalise
-// the replacement of our Predecessor.
-func (client *originClient) HandleNewPredecessor(msg protocol.NewPredecessor) error {
-	if client.origin != fromPred {
-		return fmt.Errorf(
-			"Unexpected NewPredecessor message %s",
-			client.fmtOrigin(),
-		)
-	}
-	if client.state.newPred != nil {
-		client.log.Printf(
-			"Replacing newPred; existing: %v; new: %v\n",
-			client.state.newPred, msg.Addr,
-		)
-	}
-	client.state.mu.Lock()
-	defer client.state.mu.Unlock()
-	client.state.newPred = msg.Addr
+func (client *originClient) swapPredecessorsIfReady() error {
 	if !client.latest.isEmpty() && client.state.latestIsPred {
 		latestAddr := client.latest.conn.RemoteAddr()
 		announceAddr := client.state.newPred
@@ -164,4 +145,45 @@ func (client *originClient) HandleNewPredecessor(msg protocol.NewPredecessor) er
 		client.state.latestIsSucc = false
 	}
 	return nil
+}
+
+// HandleNewPredecessor is handled from our Predecessor
+//
+// If we have receieved a ConfirmPredecessor already, we can finalise
+// the replacement of our Predecessor.
+func (client *originClient) HandleNewPredecessor(msg protocol.NewPredecessor) error {
+	if client.origin != fromPred {
+		return fmt.Errorf(
+			"Unexpected NewPredecessor message %s",
+			client.fmtOrigin(),
+		)
+	}
+	if client.state.newPred != nil {
+		client.log.Printf(
+			"Replacing newPred; existing: %v; new: %v\n",
+			client.state.newPred, msg.Addr,
+		)
+	}
+	client.state.mu.Lock()
+	defer client.state.mu.Unlock()
+	client.state.newPred = msg.Addr
+	return client.swapPredecessorsIfReady()
+}
+
+// HandleConfirmPredecessor acts as a twin to NewPredecessor
+//
+// The difference between the 2 is who they expect messages from, and what
+// state they affect. This will set latestIsPred to true, but
+// HandleNewPredecessor will instead set newPred to the announced addr
+func (client *originClient) HandleConfirmPredecessor() error {
+	if client.origin != fromNewPred {
+		return fmt.Errorf(
+			"Unexpected ConfirmPredecessor message %s",
+			client.fmtOrigin(),
+		)
+	}
+	client.state.mu.Lock()
+	defer client.state.mu.Unlock()
+	client.state.latestIsPred = true
+	return client.swapPredecessorsIfReady()
 }
