@@ -226,3 +226,55 @@ func (client *originClient) HandleNewMessage(msg protocol.NewMessage) error {
 	client.receiver.ReceiveContent(msg.Content)
 	return sendMessage(client.state.succ, msg)
 }
+
+// startLoops starts all the necessary loops for the different components
+//
+// this should only really be called once
+func (client *originClient) startLoops() {
+	go func() {
+		l, err := net.Listen("tcp", client.state.me.String())
+		if err != nil {
+			log.Fatalln("Couldn't start listener ", err)
+		}
+		defer l.Close()
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				log.Fatalln("Error accepting conn ", err)
+			}
+			client.latest.fill(conn)
+			msg, err := protocol.ReadMessage(conn)
+			if err != nil {
+				log.Println("Error reading message ", err)
+				conn.Close()
+			}
+			if err := msg.PassToClient(client); err != nil {
+				log.Println(err)
+				conn.Close()
+			}
+		}
+	}()
+	go client.listenTo(true)
+	go client.listenTo(true)
+}
+
+// listenTo is pretty lax on error handling
+func (client *originClient) listenTo(pred bool) {
+	for {
+		// this conn will change
+		var conn net.Conn
+		if pred {
+			conn = client.state.pred
+		} else {
+			conn = client.state.succ
+		}
+		msg, err := protocol.ReadMessage(conn)
+		if err != nil {
+			log.Println("Error reading message ", err)
+			continue
+		}
+		if err := msg.PassToClient(client); err != nil {
+			log.Println(err)
+		}
+	}
+}
