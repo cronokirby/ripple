@@ -56,11 +56,17 @@ type normalClient struct {
 // startLoops starts all the necessary loops for the different components
 //
 // this should only really be called once
-func (client *normalClient) startLoops() {
+// We can optionally pass a Listener, if we already opened one.
+// This is useful when transitioning from being the first node in a swarm,
+// to normal operation.
+func (client *normalClient) startLoops(l net.Listener) {
 	go func() {
-		l, err := net.Listen("tcp", client.state.me.String())
-		if err != nil {
-			log.Fatalln("Couldn't start listener ", err)
+		if l == nil {
+			newL, err := net.Listen("tcp", client.state.me.String())
+			if err != nil {
+				log.Fatalln("Couldn't start listener ", err)
+			}
+			l = newL
 		}
 		defer l.Close()
 		for {
@@ -369,7 +375,7 @@ func JoinSwarm(log *log.Logger, start, you net.Addr) (*SwarmHandle, error) {
 	}
 	normal.log = log
 	normal.receiver = protocol.NilReceiver{}
-	normal.startLoops()
+	normal.startLoops(nil)
 	return &SwarmHandle{normal}, nil
 }
 
