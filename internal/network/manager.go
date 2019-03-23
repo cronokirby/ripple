@@ -53,6 +53,63 @@ type normalClient struct {
 	latest *syncConn
 }
 
+// startLoops starts all the necessary loops for the different components
+//
+// this should only really be called once
+func (client *normalClient) startLoops() {
+	go func() {
+		l, err := net.Listen("tcp", client.state.me.String())
+		if err != nil {
+			log.Fatalln("Couldn't start listener ", err)
+		}
+		defer l.Close()
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				log.Fatalln("Error accepting conn ", err)
+			}
+			client.latest.fill(conn)
+			msg, err := protocol.ReadMessage(conn)
+			if err != nil {
+				log.Println("Error reading message ", err)
+				conn.Close()
+			}
+			wrappedClient := client.withOrigin(fromNew)
+			if err := msg.PassToClient(wrappedClient); err != nil {
+				log.Println(err)
+				conn.Close()
+			}
+		}
+	}()
+	go client.listenTo(true)
+	go client.listenTo(true)
+}
+
+// listenTo is pretty lax on error handling
+func (client *normalClient) listenTo(pred bool) {
+	for {
+		// this conn will change
+		var conn net.Conn
+		var origin int
+		if pred {
+			conn = client.state.pred
+			origin = fromPred
+		} else {
+			conn = client.state.succ
+			origin = fromSucc
+		}
+		msg, err := protocol.ReadMessage(conn)
+		if err != nil {
+			log.Println("Error reading message ", err)
+			continue
+		}
+		wrappedClient := client.withOrigin(origin)
+		if err := msg.PassToClient(wrappedClient); err != nil {
+			log.Println(err)
+		}
+	}
+}
+
 // originClient wraps a client with the origin of a message
 type originClient struct {
 	// origin holds the source of the message
@@ -65,8 +122,8 @@ type originClient struct {
 }
 
 // withOrigin embellishes a client with an origin
-func (client *normalClient) withOrigin(origin int) originClient {
-	return originClient{origin, client.log, client.receiver, client.state, client.latest}
+func (client *normalClient) withOrigin(origin int) *originClient {
+	return &originClient{origin, client.log, client.receiver, client.state, client.latest}
 }
 
 // fmtOrigin is mainly useful for debugging purposes
@@ -228,58 +285,6 @@ func (client *originClient) HandleNewMessage(msg protocol.NewMessage) error {
 	}
 	client.receiver.ReceiveContent(msg.Content)
 	return sendMessage(client.state.succ, msg)
-}
-
-// startLoops starts all the necessary loops for the different components
-//
-// this should only really be called once
-func (client *originClient) startLoops() {
-	go func() {
-		l, err := net.Listen("tcp", client.state.me.String())
-		if err != nil {
-			log.Fatalln("Couldn't start listener ", err)
-		}
-		defer l.Close()
-		for {
-			conn, err := l.Accept()
-			if err != nil {
-				log.Fatalln("Error accepting conn ", err)
-			}
-			client.latest.fill(conn)
-			msg, err := protocol.ReadMessage(conn)
-			if err != nil {
-				log.Println("Error reading message ", err)
-				conn.Close()
-			}
-			if err := msg.PassToClient(client); err != nil {
-				log.Println(err)
-				conn.Close()
-			}
-		}
-	}()
-	go client.listenTo(true)
-	go client.listenTo(true)
-}
-
-// listenTo is pretty lax on error handling
-func (client *originClient) listenTo(pred bool) {
-	for {
-		// this conn will change
-		var conn net.Conn
-		if pred {
-			conn = client.state.pred
-		} else {
-			conn = client.state.succ
-		}
-		msg, err := protocol.ReadMessage(conn)
-		if err != nil {
-			log.Println("Error reading message ", err)
-			continue
-		}
-		if err := msg.PassToClient(client); err != nil {
-			log.Println(err)
-		}
-	}
 }
 
 // joiningClient is a client trying to join a swarm
