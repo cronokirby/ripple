@@ -25,6 +25,8 @@ func sameAddr(a net.Addr, b net.Addr) bool {
 // clientState holds the state a client needs in normal operation
 type clientState struct {
 	mu sync.Mutex
+	// me is the address of this client
+	me net.Addr
 	// newPred is the address of a node trying to become our Predecessor
 	newPred net.Addr
 	// predConn is the connection we have with the current Predecessor
@@ -42,6 +44,8 @@ type clientState struct {
 // client contains the information needed in normal operation
 type client struct {
 	log *log.Logger
+	// broadcaster lets us print the text messages
+	receiver protocol.ContentReceiver
 	// state represents the mutable state under a single lock
 	state *clientState
 	// latest has its own locking mechanism
@@ -51,19 +55,17 @@ type client struct {
 // originClient wraps a client with the origin of a message
 type originClient struct {
 	// origin holds the source of the message
-	origin int
-	log    *log.Logger
-	state  *clientState
+	origin   int
+	log      *log.Logger
+	receiver protocol.ContentReceiver
+	state    *clientState
 	// latest is the connection trying to join us
 	latest *syncConn
 }
 
 // withOrigin embellishes a client with an origin
 func (client client) withOrigin(origin int) originClient {
-	state := client.state
-	latest := client.latest
-	log := client.log
-	return originClient{origin, log, state, latest}
+	return originClient{origin, client.log, client.receiver, client.state, client.latest}
 }
 
 // fmtOrigin is mainly useful for debugging purposes
@@ -119,7 +121,8 @@ func (client *originClient) HandleJoinSwarm() error {
 // HandleReferral is always ignored, because we're not joining a swarm
 func (client *originClient) HandleReferral(msg protocol.Referral) error {
 	return fmt.Errorf(
-		"Unexpected Referral message %s",
+		"Unexpected Referral message %v %s",
+		msg,
 		client.fmtOrigin(),
 	)
 }
@@ -158,7 +161,8 @@ func (client *originClient) swapPredecessorsIfReady() error {
 func (client *originClient) HandleNewPredecessor(msg protocol.NewPredecessor) error {
 	if client.origin != fromPred {
 		return fmt.Errorf(
-			"Unexpected NewPredecessor message %s",
+			"Unexpected NewPredecessor message %v %s",
+			msg,
 			client.fmtOrigin(),
 		)
 	}
@@ -205,4 +209,20 @@ func (client *originClient) HandleConfirmReferral() error {
 	client.state.succ = client.latest.conn
 	client.clearLatest()
 	return nil
+}
+
+// HandleNewMessage allows us to handle text messages
+func (client *originClient) HandleNewMessage(msg protocol.NewMessage) error {
+	if client.origin != fromPred {
+		return fmt.Errorf(
+			"Unexpected NewMessage %v %s",
+			msg,
+			client.fmtOrigin(),
+		)
+	}
+	if sameAddr(client.state.me, msg.Sender) {
+		return nil
+	}
+	client.receiver.ReceiveContent(msg.Content)
+	return sendMessage(client.state.succ, msg)
 }
