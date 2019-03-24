@@ -94,11 +94,16 @@ func (r NewPredecessor) PassToClient(client Client) error {
 // It contacts the node contained in Referral using this message, and
 // once that node receieves a NewPredecessor message with the same address
 // as this joining node, then it becomes the new Predecessor.
-type ConfirmPredecessor struct{}
+type ConfirmPredecessor struct {
+	// Addr is the address this node wants to be contacted with
+	Addr net.Addr
+}
 
 // MessageBytes serializes a ConfirmPredecessor
 func (r ConfirmPredecessor) MessageBytes() []byte {
-	return []byte{5}
+	addrString := r.Addr.String()
+	header := []byte{5, byte(len(addrString))}
+	return append(header, []byte(addrString)...)
 }
 
 // PassToClient implements the visitor pattern for ConfirmPredecessor
@@ -202,7 +207,13 @@ func ReadMessage(r io.Reader) (Message, error) {
 		}
 		res = NewPredecessor{Addr: addr}
 	case 5:
-		res = ConfirmPredecessor{}
+		addrLen := slice[1]
+		slice = slice[2:]
+		addr, err := readAddr(r, addrLen, slice, buf)
+		if err != nil {
+			return nil, err
+		}
+		res = ConfirmPredecessor{Addr: addr}
 	case 6:
 		res = ConfirmReferral{}
 	case 7:

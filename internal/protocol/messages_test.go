@@ -106,11 +106,28 @@ func TestNewPredecessorRoundTrip(t *testing.T) {
 }
 
 func TestConfirmPredecessorMessageBytes(t *testing.T) {
-	r := ConfirmPredecessor{}
-	expected := []byte{5}
+	r := ConfirmPredecessor{
+		Addr: &net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: 99},
+	}
+	addrString := "0.0.0.0:99"
+	expected := []byte{5, byte(len(addrString))}
+	expected = append(expected, []byte(addrString)...)
 	result := r.MessageBytes()
 	if !bytes.Equal(result, expected) {
 		t.Errorf("Expected %v got %v", expected, result)
+	}
+}
+
+func TestConfirmPredecessorRoundTrip(t *testing.T) {
+	r := ConfirmPredecessor{
+		Addr: &net.TCPAddr{IP: net.ParseIP("201.128.44.20"), Port: 8008},
+	}
+	expected, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(r, expected) {
+		t.Errorf("Expected %v got %v", expected, r)
 	}
 }
 
