@@ -42,7 +42,7 @@ func (r JoinSwarm) MessageBytes() []byte {
 
 // PassToClient implements the visitor pattern for JoinSwarm
 func (r JoinSwarm) PassToClient(client Client) error {
-	return client.HandleJoinSwarm()
+	return client.HandleJoinSwarm(r)
 }
 
 // Referral represents a redirection to another node.
@@ -108,7 +108,7 @@ func (r ConfirmPredecessor) MessageBytes() []byte {
 
 // PassToClient implements the visitor pattern for ConfirmPredecessor
 func (r ConfirmPredecessor) PassToClient(client Client) error {
-	return client.HandleConfirmPredecessor()
+	return client.HandleConfirmPredecessor(r)
 }
 
 // ConfirmReferral is used by a node to confirm replacement of its Predecessor

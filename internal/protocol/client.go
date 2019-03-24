@@ -6,13 +6,13 @@ type Client interface {
 	// Handle a ping message from the peer
 	HandlePing() error
 	// Handle a JoinSwarm message
-	HandleJoinSwarm() error
+	HandleJoinSwarm(JoinSwarm) error
 	// Handle a Referral message
 	HandleReferral(Referral) error
 	// Handle a NewPredecessor message
 	HandleNewPredecessor(NewPredecessor) error
 	// Handle a ConfirmPredecessor message
-	HandleConfirmPredecessor() error
+	HandleConfirmPredecessor(ConfirmPredecessor) error
 	// Handle a ConfirmReferral message
 	HandleConfirmReferral() error
 	// Handle a NewMessage message
