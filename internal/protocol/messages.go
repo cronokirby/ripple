@@ -28,11 +28,16 @@ func (p Ping) PassToClient(c Client) error {
 }
 
 // JoinSwarm represents a request from one peer to join the swarm
-type JoinSwarm struct{}
+type JoinSwarm struct {
+	// Addr is the address we'd like to be referred to
+	Addr net.Addr
+}
 
 // MessageBytes serializes a JoinSwarm into a byte slice
 func (r JoinSwarm) MessageBytes() []byte {
-	return []byte{2}
+	addrString := r.Addr.String()
+	header := []byte{2, byte(len(addrString))}
+	return append(header, []byte(addrString)...)
 }
 
 // PassToClient implements the visitor pattern for JoinSwarm
@@ -173,7 +178,13 @@ func ReadMessage(r io.Reader) (Message, error) {
 	case 1:
 		res = Ping{}
 	case 2:
-		res = JoinSwarm{}
+		addrLen := slice[1]
+		slice = slice[2:]
+		addr, err := readAddr(r, addrLen, slice, buf)
+		if err != nil {
+			return nil, err
+		}
+		res = JoinSwarm{Addr: addr}
 	case 3:
 		addrLen := slice[1]
 		slice = slice[2:]

@@ -250,7 +250,7 @@ func (client *originClient) HandleNewPredecessor(msg protocol.NewPredecessor) er
 // state they affect. This will set latestIsPred to true, but
 // HandleNewPredecessor will instead set newPred to the announced addr
 func (client *originClient) HandleConfirmPredecessor() error {
-	if client.origin != fromNewPred {
+	if client.origin != fromNew {
 		return fmt.Errorf(
 			"Unexpected ConfirmPredecessor message %s",
 			client.fmtOrigin(),

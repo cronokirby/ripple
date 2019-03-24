@@ -23,6 +23,8 @@ The Ping message contains no information, so it only has a type tag.
 | Field | Length | Description          |
 | ----- | ------ | -------------------- |
 | Type  | 1      | 0x02 for JoinSwarm |
+| Length    | 1      | Unsigned byte, how long the following field is  |
+| Addr      | Length | A UTF-8 string containing the address of this node |
 
 ## Referral
 Referral contains the address of the node to send a **ConfirmPredecessor** to

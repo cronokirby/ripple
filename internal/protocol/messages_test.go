@@ -28,11 +28,28 @@ func TestPingParsing(t *testing.T) {
 }
 
 func TestJoinSwarmMessageBytes(t *testing.T) {
-	r := JoinSwarm{}
-	expected := []byte{2}
+	r := JoinSwarm{
+		Addr: &net.TCPAddr{IP: net.ParseIP("100.0.0.0"), Port: 2002},
+	}
+	addrString := "100.0.0.0:2002"
+	expected := []byte{2, byte(len(addrString))}
+	expected = append(expected, []byte(addrString)...)
 	result := r.MessageBytes()
 	if !bytes.Equal(result, expected) {
 		t.Errorf("Expected %v got %v", expected, result)
+	}
+}
+
+func TestJoinSwarmRoundTrip(t *testing.T) {
+	r := JoinSwarm{
+		Addr: &net.TCPAddr{IP: net.ParseIP("128.125.44.20"), Port: 8008},
+	}
+	expected, err := ReadMessage(bytes.NewReader(r.MessageBytes()))
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(r, expected) {
+		t.Errorf("Expected %v got %v", expected, r)
 	}
 }
 
