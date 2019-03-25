@@ -108,20 +108,30 @@ func (client *normalClient) startLoops(l net.Listener, waitSucc bool) {
 
 // listenTo is pretty lax on error handling
 func (client *normalClient) listenTo(pred bool) {
-	for {
-		// this conn will change
-		var conn net.Conn
-		var origin int
+	var origin int
+	if pred {
+		origin = fromPred
+	} else {
+		origin = fromSucc
+	}
+	whichConn := func() net.Conn {
 		if pred {
-			conn = client.state.pred.conn
-			origin = fromPred
-		} else {
-			conn = client.state.succ.conn
-			origin = fromSucc
+			return client.state.pred.conn
 		}
+		return client.state.succ.conn
+	}
+	for {
+		conn := whichConn()
 		msg, err := protocol.ReadMessage(conn)
 		if err != nil {
-			log.Println("Error reading message ", err)
+			// TODO: find a better way to handle conn changes
+			ignore := false
+			client.state.mu.Lock()
+			ignore = !sameAddr(conn.RemoteAddr(), whichConn().RemoteAddr())
+			client.state.mu.Unlock()
+			if !ignore {
+				log.Println("Error reading message ", err)
+			}
 			continue
 		}
 		wrappedClient := client.withOrigin(origin)
