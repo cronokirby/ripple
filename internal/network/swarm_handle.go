@@ -122,7 +122,7 @@ func (client *normalClient) listenTo(pred bool) {
 		msg, err := protocol.ReadMessage(conn)
 		if err != nil {
 			log.Println("Error reading message ", err)
-			break
+			continue
 		}
 		wrappedClient := client.withOrigin(origin)
 		if err := msg.PassToClient(wrappedClient); err != nil {
