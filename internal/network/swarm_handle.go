@@ -10,25 +10,9 @@ import (
 	"github.com/cronokirby/ripple/internal/protocol"
 )
 
-const (
-	fromPred = iota
-	fromSucc
-	fromNew
-	fromNewPred
-	fromNewSucc
-)
-
 // sameAddr checks if 2 nodes are the same, by string equality
 func sameAddr(a net.Addr, b net.Addr) bool {
 	return a.String() == b.String()
-}
-
-// peer holds an address and a connection so other peers can connect as well
-type peer struct {
-	// addr is the address this peer is known by
-	addr net.Addr
-	// conn is the connection we currently have with it
-	conn net.Conn
 }
 
 // clientState holds the state a client needs in normal operation
