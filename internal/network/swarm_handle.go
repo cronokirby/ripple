@@ -22,18 +22,14 @@ type clientState struct {
 	me net.Addr
 	// newPred is the address of a node trying to become our Predecessor
 	newPred net.Addr
-	// predConn is the connection we have with the current Predecessor
+	// pred is our Predecessor node
 	pred peer
-	// succConn is the connection in front of us
+	// succ is our Successor node
 	succ peer
 	// latestSuccAddr is not nil once we know the latest is trying to become our Succ
 	latestSuccAddr net.Addr
 	// latestPredAddr is not nil once we know the latest is trying to become our Succ
 	latestPredAddr net.Addr
-}
-
-func (state *clientState) sameSuccAndPred() bool {
-	return sameAddr(state.pred.addr, state.succ.addr)
 }
 
 // normalClient contains the information needed in normal operation
@@ -43,53 +39,55 @@ type normalClient struct {
 	receiver protocol.ContentReceiver
 	// state represents the mutable state under a single lock
 	state *clientState
+	// pool holds the connection pool for our peers
+	pool *peerPool
 	// latest has its own locking mechanism
 	latest *syncConn
 }
 
-// startLoops starts all the necessary loops for the different components
-//
-// this should only really be called once
-// We can optionally pass a Listener, if we already opened one.
-// This is useful when transitioning from being the first node in a swarm,
-// to normal operation.
-func (client *normalClient) startLoops(l net.Listener, waitSucc bool) {
-	client.log.Println("Starting loops...")
-	go func() {
-		if l == nil {
-			newL, err := net.Listen("tcp", client.state.me.String())
-			if err != nil {
-				log.Fatalln("Couldn't start listener ", err)
-			}
-			l = newL
+func (client *normalClient) listenLoop(l net.Listener) {
+	if l == nil {
+		newL, err := net.Listen("tcp", client.state.me.String())
+		if err != nil {
+			log.Fatalln("Couldn't start listener ", err)
 		}
-		defer l.Close()
-		for {
-			conn, err := l.Accept()
-			if err != nil {
-				log.Fatalln("Error accepting conn ", err)
-			}
-			client.latest.fill(conn)
-			msg, err := protocol.ReadMessage(conn)
-			if err != nil {
-				log.Println("Error reading message ", err)
-				conn.Close()
-			}
-			wrappedClient := client.withOrigin(fromNew)
-			if err := msg.PassToClient(wrappedClient); err != nil {
-				log.Println(err)
-				conn.Close()
-			}
+		l = newL
+	}
+	defer l.Close()
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			log.Fatalln("Error accepting conn ", err)
 		}
-	}()
-	go client.listenTo(waitSucc)
-	go func() {
-		for client.state.sameSuccAndPred() {
+		client.latest.fill(conn)
+		msg, err := protocol.ReadMessage(conn)
+		if err != nil {
+			log.Println("Error reading message ", err)
+			conn.Close()
 		}
-		client.listenTo(!waitSucc)
-	}()
+		wrappedClient := client.withOrigin(newRole)
+		if err := msg.PassToClient(wrappedClient); err != nil {
+			log.Println(err)
+			conn.Close()
+		}
+	}
 }
 
+func (client *normalClient) messageLoop() {
+	for {
+		select {
+		case oMsg := <-client.pool.messages:
+			wrappedClient := client.withOrigin(oMsg.origin)
+			if err := oMsg.msg.PassToClient(wrappedClient); err != nil {
+				log.Println(err)
+			}
+		case err := <-client.pool.errors:
+			client.log.Println(err)
+		}
+	}
+}
+
+/*
 // listenTo is pretty lax on error handling
 func (client *normalClient) listenTo(pred bool) {
 	var origin int
@@ -124,6 +122,7 @@ func (client *normalClient) listenTo(pred bool) {
 		}
 	}
 }
+*/
 
 // originClient wraps a client with the origin of a message
 type originClient struct {
@@ -132,41 +131,20 @@ type originClient struct {
 	log      *log.Logger
 	receiver protocol.ContentReceiver
 	state    *clientState
+	// pool is the underlying peer pool
+	pool *peerPool
 	// latest is the connection trying to join us
 	latest *syncConn
 }
 
 // withOrigin embellishes a client with an origin
 func (client *normalClient) withOrigin(origin int) *originClient {
-	return &originClient{origin, client.log, client.receiver, client.state, client.latest}
-}
-
-// isFromPred handles the case where we have the same Pred and Succ correctly
-func (client *originClient) isFromPred() bool {
-	return client.origin == fromPred || sameAddr(client.state.pred.addr, client.state.succ.addr)
-}
-
-// isFromSucc handles the case where we have the same Pred and Succ correctly
-func (client *originClient) isFromSucc() bool {
-	return client.origin == fromSucc || sameAddr(client.state.pred.addr, client.state.succ.addr)
+	return &originClient{origin, client.log, client.receiver, client.state, client.pool, client.latest}
 }
 
 // fmtOrigin is mainly useful for debugging purposes
 func (client *originClient) fmtOrigin() string {
-	switch client.origin {
-	case fromPred:
-		return fmt.Sprintf("fromPred: %v", client.state.pred.addr)
-	case fromSucc:
-		return fmt.Sprintf("fromSucc: %v", client.state.succ.addr)
-	case fromNew:
-		return fmt.Sprintf("fromNew: %v", client.latest)
-	case fromNewPred:
-		return fmt.Sprintf("fromNewPred: %v", client.latest)
-	case fromNewSucc:
-		return fmt.Sprintf("fromNewSucc: %v", client.latest)
-	default:
-		return "unknown"
-	}
+	return originString(client.origin)
 }
 
 // HandlePing does nothing at the moment, but could be used for keep alives
@@ -181,7 +159,7 @@ func (client *originClient) HandlePing() error {
 // and send a NewPredecessor message to that Successor, as well as a Referral
 // back to the new peer.
 func (client *originClient) HandleJoinSwarm(msg protocol.JoinSwarm) error {
-	if client.origin != fromNew {
+	if client.origin != newRole {
 		return fmt.Errorf(
 			"Unexpected JoinSwarm message %s",
 			client.fmtOrigin(),
@@ -231,13 +209,12 @@ func (client *originClient) swapPredecessorsIfReady() error {
 		if err := sendMessage(client.state.pred.conn, confirm); err != nil {
 			return err
 		}
-		if !client.state.sameSuccAndPred() {
-			client.state.pred.conn.Close()
-		}
+		client.pool.remove(client.state.pred, true)
 		client.state.pred = peer{
 			addr: client.state.latestPredAddr,
 			conn: client.latest.conn,
 		}
+		client.pool.submit(client.state.pred, true)
 		client.clearLatest()
 	}
 	return nil
@@ -248,7 +225,7 @@ func (client *originClient) swapPredecessorsIfReady() error {
 // If we have receieved a ConfirmPredecessor already, we can finalise
 // the replacement of our Predecessor.
 func (client *originClient) HandleNewPredecessor(msg protocol.NewPredecessor) error {
-	if !client.isFromPred() {
+	if !isPredRole(client.origin) {
 		return fmt.Errorf(
 			"Unexpected NewPredecessor message %v %s",
 			msg,
@@ -273,7 +250,7 @@ func (client *originClient) HandleNewPredecessor(msg protocol.NewPredecessor) er
 // state they affect. This will set latestIsPred to true, but
 // HandleNewPredecessor will instead set newPred to the announced addr
 func (client *originClient) HandleConfirmPredecessor(msg protocol.ConfirmPredecessor) error {
-	if client.origin != fromNew {
+	if client.origin != newRole {
 		return fmt.Errorf(
 			"Unexpected ConfirmPredecessor message %s",
 			client.fmtOrigin(),
@@ -287,7 +264,7 @@ func (client *originClient) HandleConfirmPredecessor(msg protocol.ConfirmPredece
 
 // HandleConfirmReferral allows us to replace our Successor
 func (client *originClient) HandleConfirmReferral() error {
-	if !client.isFromSucc() || client.state.latestSuccAddr == nil {
+	if !isSuccRole(client.origin) || client.state.latestSuccAddr == nil {
 		return fmt.Errorf(
 			"Unexpected ConfirmReferral message %s",
 			client.fmtOrigin(),
@@ -295,20 +272,19 @@ func (client *originClient) HandleConfirmReferral() error {
 	}
 	client.state.mu.Lock()
 	defer client.state.mu.Unlock()
-	if !client.state.sameSuccAndPred() {
-		client.state.succ.conn.Close()
-	}
+	client.pool.remove(client.state.succ, false)
 	client.state.succ = peer{
 		addr: client.state.latestSuccAddr,
 		conn: client.latest.conn,
 	}
+	client.pool.submit(client.state.succ, false)
 	client.clearLatest()
 	return nil
 }
 
 // HandleNewMessage allows us to handle text messages
 func (client *originClient) HandleNewMessage(msg protocol.NewMessage) error {
-	if !client.isFromPred() {
+	if !isPredRole(client.origin) {
 		return fmt.Errorf(
 			"Unexpected NewMessage %v %s",
 			msg,
@@ -357,7 +333,7 @@ func (client *joiningClient) HandleNewMessage(msg protocol.NewMessage) error {
 }
 
 // joinSwarm can't and won't complete the logging and receiever fields of client
-func (client *joiningClient) joinSwarm(start, me net.Addr) (*normalClient, error) {
+func (client *joiningClient) joinSwarm(log *log.Logger, start, me net.Addr) (*normalClient, error) {
 	predConn, err := net.Dial(start.Network(), start.String())
 	if err != nil {
 		return nil, err
@@ -389,7 +365,19 @@ func (client *joiningClient) joinSwarm(start, me net.Addr) (*normalClient, error
 	predPeer := peer{addr: start, conn: predConn}
 	succPeer := peer{addr: succAddr, conn: succConn}
 	state := &clientState{me: me, pred: predPeer, succ: succPeer}
-	return &normalClient{state: state, latest: makeSyncConn()}, nil
+	normal := &normalClient{
+		log:      log,
+		receiver: protocol.NilReceiver{},
+		pool:     makePeerPool(),
+		state:    state,
+		latest:   makeSyncConn(),
+	}
+	normal.log.Println("Starting loops...")
+	normal.pool.submit(normal.state.pred, true)
+	normal.pool.submit(normal.state.succ, false)
+	go normal.listenLoop(nil)
+	go normal.messageLoop()
+	return normal, nil
 }
 
 // lonelyClient is a client starting a new swarm, with no peers
@@ -404,8 +392,6 @@ type lonelyClient struct {
 	// first starts off nil, and becomes filled as we try and get our first peer
 	first net.Conn
 	log   *log.Logger
-	// listener should be reused after becoming not lonely
-	listener net.Listener
 }
 
 // HandlePing is unexpected
@@ -484,7 +470,6 @@ func (client *lonelyClient) startSwarm() (*normalClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	client.listener = l
 	for client.first == nil {
 		client.firstAddr = nil
 		conn, err := l.Accept()
@@ -507,7 +492,19 @@ func (client *lonelyClient) startSwarm() (*normalClient, error) {
 	}
 	peer := peer{addr: client.firstAddr, conn: client.first}
 	state := &clientState{me: client.me, pred: peer, succ: peer}
-	return &normalClient{log: client.log, state: state, latest: makeSyncConn()}, nil
+	normal := &normalClient{
+		log:      client.log,
+		receiver: protocol.NilReceiver{},
+		pool:     makePeerPool(),
+		state:    state,
+		latest:   makeSyncConn(),
+	}
+	normal.log.Println("Starting loops...")
+	normal.pool.submit(peer, true)
+	normal.pool.submit(peer, false)
+	go normal.listenLoop(l)
+	go normal.messageLoop()
+	return normal, nil
 }
 
 // SwarmHandle allows us to interact with a swarm
@@ -524,13 +521,10 @@ type SwarmHandle struct {
 // after joining.
 func JoinSwarm(log *log.Logger, you, start net.Addr) (*SwarmHandle, error) {
 	joining := &joiningClient{}
-	normal, err := joining.joinSwarm(start, you)
+	normal, err := joining.joinSwarm(log, start, you)
 	if err != nil {
 		return nil, err
 	}
-	normal.log = log
-	normal.receiver = protocol.NilReceiver{}
-	normal.startLoops(nil, true)
 	return &SwarmHandle{normal}, nil
 }
 
@@ -543,8 +537,6 @@ func CreateSwarm(log *log.Logger, you net.Addr) (*SwarmHandle, error) {
 	if err != nil {
 		return nil, err
 	}
-	normal.receiver = protocol.NilReceiver{}
-	normal.startLoops(lonely.listener, false)
 	return &SwarmHandle{normal}, nil
 }
 

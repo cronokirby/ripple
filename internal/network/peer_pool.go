@@ -19,11 +19,11 @@ func isNewRole(role int) bool {
 }
 
 func isSuccRole(role int) bool {
-	return (role & predRole) != 0
+	return (role & succRole) != 0
 }
 
 func isPredRole(role int) bool {
-	return (role & succRole) != 0
+	return (role & predRole) != 0
 }
 
 func isUselessRole(role int) bool {
