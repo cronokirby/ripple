@@ -87,43 +87,6 @@ func (client *normalClient) messageLoop() {
 	}
 }
 
-/*
-// listenTo is pretty lax on error handling
-func (client *normalClient) listenTo(pred bool) {
-	var origin int
-	if pred {
-		origin = fromPred
-	} else {
-		origin = fromSucc
-	}
-	whichConn := func() net.Conn {
-		if pred {
-			return client.state.pred.conn
-		}
-		return client.state.succ.conn
-	}
-	for {
-		conn := whichConn()
-		msg, err := protocol.ReadMessage(conn)
-		if err != nil {
-			// TODO: find a better way to handle conn changes
-			ignore := false
-			client.state.mu.Lock()
-			ignore = !sameAddr(conn.RemoteAddr(), whichConn().RemoteAddr())
-			client.state.mu.Unlock()
-			if !ignore {
-				log.Println("Error reading message ", err)
-			}
-			continue
-		}
-		wrappedClient := client.withOrigin(origin)
-		if err := msg.PassToClient(wrappedClient); err != nil {
-			log.Println(err)
-		}
-	}
-}
-*/
-
 // originClient wraps a client with the origin of a message
 type originClient struct {
 	// origin holds the source of the message
