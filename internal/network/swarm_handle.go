@@ -17,9 +17,7 @@ func sameAddr(a net.Addr, b net.Addr) bool {
 
 // clientState holds the state a client needs in normal operation
 type clientState struct {
-	mu sync.Mutex
-	// me is the address of this client
-	me net.Addr
+	mu sync.RWMutex
 	// newPred is the address of a node trying to become our Predecessor
 	newPred net.Addr
 	// pred is our Predecessor node
@@ -32,9 +30,46 @@ type clientState struct {
 	latestPredAddr net.Addr
 }
 
+// getNewPred is thread safe
+func (state *clientState) getNewPred() net.Addr {
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	return state.newPred
+}
+
+// getPred is thread-safe
+func (state *clientState) getPred() peer {
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	return state.pred
+}
+
+// getSucc is thread-safe
+func (state *clientState) getSucc() peer {
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	return state.succ
+}
+
+// getLatestSuccAddr is thread safe
+func (state *clientState) getLatestSuccAddr() net.Addr {
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	return state.latestSuccAddr
+}
+
+// getLatestPredAddr is thread safe
+func (state *clientState) getLatestPredAddr() net.Addr {
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	return state.latestPredAddr
+}
+
 // normalClient contains the information needed in normal operation
 type normalClient struct {
 	log *log.Logger
+	// me is the address of this client
+	me net.Addr
 	// broadcaster lets us print the text messages
 	receiver protocol.ContentReceiver
 	// state represents the mutable state under a single lock
@@ -47,7 +82,7 @@ type normalClient struct {
 
 func (client *normalClient) listenLoop(l net.Listener) {
 	if l == nil {
-		newL, err := net.Listen("tcp", client.state.me.String())
+		newL, err := net.Listen("tcp", client.me.String())
 		if err != nil {
 			log.Fatalln("Couldn't start listener ", err)
 		}
@@ -90,19 +125,13 @@ func (client *normalClient) messageLoop() {
 // originClient wraps a client with the origin of a message
 type originClient struct {
 	// origin holds the source of the message
-	origin   int
-	log      *log.Logger
-	receiver protocol.ContentReceiver
-	state    *clientState
-	// pool is the underlying peer pool
-	pool *peerPool
-	// latest is the connection trying to join us
-	latest *syncConn
+	origin int
+	under  *normalClient
 }
 
 // withOrigin embellishes a client with an origin
 func (client *normalClient) withOrigin(origin int) *originClient {
-	return &originClient{origin, client.log, client.receiver, client.state, client.pool, client.latest}
+	return &originClient{origin, client}
 }
 
 // fmtOrigin is mainly useful for debugging purposes
@@ -128,15 +157,17 @@ func (client *originClient) HandleJoinSwarm(msg protocol.JoinSwarm) error {
 			client.fmtOrigin(),
 		)
 	}
-	client.state.mu.Lock()
-	defer client.state.mu.Unlock()
-	client.state.latestSuccAddr = msg.Addr
-	referral := protocol.Referral{Addr: client.state.succ.addr}
-	if err := sendMessage(client.latest.conn, referral); err != nil {
+	client.under.state.mu.Lock()
+	client.under.state.latestSuccAddr = msg.Addr
+	client.under.state.mu.Unlock()
+	client.under.state.mu.RLock()
+	defer client.under.state.mu.RUnlock()
+	referral := protocol.Referral{Addr: client.under.state.succ.addr}
+	if err := sendMessage(client.under.latest.conn, referral); err != nil {
 		return err
 	}
 	newPred := protocol.NewPredecessor{Addr: msg.Addr}
-	if err := sendMessage(client.state.succ.conn, newPred); err != nil {
+	if err := sendMessage(client.under.state.succ.conn, newPred); err != nil {
 		return err
 	}
 	return nil
@@ -151,35 +182,41 @@ func (client *originClient) HandleReferral(msg protocol.Referral) error {
 	)
 }
 
+// clearLatest must be called under a lock
 func (client *originClient) clearLatest() {
-	client.latest.empty()
-	client.state.latestPredAddr = nil
-	client.state.latestSuccAddr = nil
+	client.under.latest.empty()
+	client.under.state.latestPredAddr = nil
+	client.under.state.latestSuccAddr = nil
 }
 
 func (client *originClient) swapPredecessorsIfReady() error {
-	if !client.latest.isEmpty() && client.state.latestPredAddr != nil && client.state.newPred != nil {
-		latestAddr := client.state.latestPredAddr
-		announceAddr := client.state.newPred
-		if !sameAddr(latestAddr, announceAddr) {
-			return fmt.Errorf(
-				"Mismatched Predecessors; announced: %v; connected: %v",
-				announceAddr,
-				latestAddr,
-			)
-		}
-		confirm := protocol.ConfirmReferral{}
-		if err := sendMessage(client.state.pred.conn, confirm); err != nil {
-			return err
-		}
-		client.pool.remove(client.state.pred, true)
-		client.state.pred = peer{
-			addr: client.state.latestPredAddr,
-			conn: client.latest.conn,
-		}
-		client.pool.submit(client.state.pred, true)
-		client.clearLatest()
+	under := client.under
+	noLatest := under.latest.isEmpty()
+	noPred := under.state.latestPredAddr == nil
+	noPredAnnounce := under.state.newPred == nil
+	if noLatest || noPred || noPredAnnounce {
+		return nil
 	}
+	latestAddr := under.state.latestPredAddr
+	announceAddr := under.state.newPred
+	if !sameAddr(latestAddr, announceAddr) {
+		return fmt.Errorf(
+			"Mismatched Predecessors; announced: %v; connected: %v",
+			announceAddr,
+			latestAddr,
+		)
+	}
+	confirm := protocol.ConfirmReferral{}
+	if err := sendMessage(under.state.pred.conn, confirm); err != nil {
+		return err
+	}
+	under.pool.remove(under.state.pred, true)
+	under.state.pred = peer{
+		addr: client.under.state.latestPredAddr,
+		conn: client.under.latest.conn,
+	}
+	under.pool.submit(under.state.pred, true)
+	client.clearLatest()
 	return nil
 }
 
@@ -195,15 +232,17 @@ func (client *originClient) HandleNewPredecessor(msg protocol.NewPredecessor) er
 			client.fmtOrigin(),
 		)
 	}
-	if client.state.newPred != nil {
-		client.log.Printf(
+	under := client.under
+	newPred := under.state.getNewPred()
+	if newPred != nil {
+		under.log.Printf(
 			"Replacing newPred; existing: %v; new: %v\n",
-			client.state.newPred, msg.Addr,
+			newPred, msg.Addr,
 		)
 	}
-	client.state.mu.Lock()
-	defer client.state.mu.Unlock()
-	client.state.newPred = msg.Addr
+	under.state.mu.Lock()
+	defer under.state.mu.Unlock()
+	under.state.newPred = msg.Addr
 	return client.swapPredecessorsIfReady()
 }
 
@@ -219,28 +258,30 @@ func (client *originClient) HandleConfirmPredecessor(msg protocol.ConfirmPredece
 			client.fmtOrigin(),
 		)
 	}
-	client.state.mu.Lock()
-	defer client.state.mu.Unlock()
-	client.state.latestPredAddr = msg.Addr
+	under := client.under
+	under.state.mu.Lock()
+	defer under.state.mu.Unlock()
+	under.state.latestPredAddr = msg.Addr
 	return client.swapPredecessorsIfReady()
 }
 
 // HandleConfirmReferral allows us to replace our Successor
 func (client *originClient) HandleConfirmReferral() error {
-	if !isSuccRole(client.origin) || client.state.latestSuccAddr == nil {
+	under := client.under
+	if !isSuccRole(client.origin) || under.state.getLatestSuccAddr() == nil {
 		return fmt.Errorf(
 			"Unexpected ConfirmReferral message %s",
 			client.fmtOrigin(),
 		)
 	}
-	client.state.mu.Lock()
-	defer client.state.mu.Unlock()
-	client.pool.remove(client.state.succ, false)
-	client.state.succ = peer{
-		addr: client.state.latestSuccAddr,
-		conn: client.latest.conn,
+	under.state.mu.Lock()
+	defer under.state.mu.Unlock()
+	under.pool.remove(under.state.succ, false)
+	under.state.succ = peer{
+		addr: under.state.latestSuccAddr,
+		conn: under.latest.conn,
 	}
-	client.pool.submit(client.state.succ, false)
+	under.pool.submit(under.state.succ, false)
 	client.clearLatest()
 	return nil
 }
@@ -254,11 +295,11 @@ func (client *originClient) HandleNewMessage(msg protocol.NewMessage) error {
 			client.fmtOrigin(),
 		)
 	}
-	if sameAddr(client.state.me, msg.Sender) {
+	if sameAddr(client.under.me, msg.Sender) {
 		return nil
 	}
-	client.receiver.ReceiveContent(msg.Content)
-	return sendMessage(client.state.succ.conn, msg)
+	client.under.receiver.ReceiveContent(msg.Content)
+	return sendMessage(client.under.state.getSucc().conn, msg)
 }
 
 // joiningClient is a client trying to join a swarm
@@ -327,9 +368,10 @@ func (client *joiningClient) joinSwarm(log *log.Logger, start, me net.Addr) (*no
 	}
 	predPeer := peer{addr: start, conn: predConn}
 	succPeer := peer{addr: succAddr, conn: succConn}
-	state := &clientState{me: me, pred: predPeer, succ: succPeer}
+	state := &clientState{pred: predPeer, succ: succPeer}
 	normal := &normalClient{
 		log:      log,
+		me:       me,
 		receiver: protocol.NilReceiver{},
 		pool:     makePeerPool(),
 		state:    state,
@@ -454,9 +496,10 @@ func (client *lonelyClient) startSwarm() (*normalClient, error) {
 		}
 	}
 	peer := peer{addr: client.firstAddr, conn: client.first}
-	state := &clientState{me: client.me, pred: peer, succ: peer}
+	state := &clientState{pred: peer, succ: peer}
 	normal := &normalClient{
 		log:      client.log,
+		me:       client.me,
 		receiver: protocol.NilReceiver{},
 		pool:     makePeerPool(),
 		state:    state,
@@ -510,7 +553,7 @@ func (swarm *SwarmHandle) SetReceiver(receiver protocol.ContentReceiver) {
 
 // SendContent allows us to send a piece of text to the rest of the swarm
 func (swarm *SwarmHandle) SendContent(content string) {
-	msg := protocol.NewMessage{Sender: swarm.client.state.me, Content: content}
+	msg := protocol.NewMessage{Sender: swarm.client.me, Content: content}
 	// ignore errors
 	sendMessage(swarm.client.state.succ.conn, msg)
 }

@@ -90,11 +90,16 @@ type peerPool struct {
 	roles    map[string]int
 	messages chan originMessage
 	errors   chan error
-	mu       sync.Mutex
+	mu       sync.RWMutex
 }
 
 func makePeerPool() *peerPool {
-	return &peerPool{make(map[string]int), make(chan originMessage), make(chan error), sync.Mutex{}}
+	return &peerPool{
+		make(map[string]int),
+		make(chan originMessage),
+		make(chan error),
+		sync.RWMutex{},
+	}
 }
 
 func (pool *peerPool) submit(peer peer, pred bool) {
@@ -141,12 +146,18 @@ func (pool *peerPool) remove(peer peer, pred bool) {
 	}
 }
 
+func (pool *peerPool) getRole(peer peer) int {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	return pool.roles[peer.addr.String()]
+}
+
 func poolLoop(pool *peerPool, peer peer) {
 	for {
 		msg, err := protocol.ReadMessage(peer.conn)
 		// an error can also indicate a closed connection, our signal to die
 		if err != nil {
-			role := pool.roles[peer.addr.String()]
+			role := pool.getRole(peer)
 			// we're no longer needed, and receieved a close connection error
 			if isUselessRole(role) {
 				break
@@ -154,7 +165,7 @@ func poolLoop(pool *peerPool, peer peer) {
 			pool.errors <- originError{origin: role, err: err}
 			continue
 		}
-		role := pool.roles[peer.addr.String()]
+		role := pool.getRole(peer)
 		pool.messages <- originMessage{origin: role, msg: msg}
 	}
 }
