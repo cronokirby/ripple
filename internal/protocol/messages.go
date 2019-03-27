@@ -150,6 +150,30 @@ func (r NewMessage) PassToClient(client Client) error {
 	return client.HandleNewMessage(r)
 }
 
+// Nickname allows us to change our nickname across the swarm
+type Nickname struct {
+	// Sender is the node that sent this message
+	Sender net.Addr
+	// Name is the new name that node would like to take on
+	Name string
+}
+
+// MessageBytes serializes a Nickname
+func (r Nickname) MessageBytes() []byte {
+	senderString := r.Sender.String()
+	bytes := []byte{7, byte(len(senderString))}
+	bytes = append(bytes, []byte(senderString)...)
+	len := len(r.Name)
+	bytes = append(bytes, byte(len>>24), byte(len>>16), byte(len>>8), byte(len))
+	bytes = append(bytes, []byte(r.Name)...)
+	return bytes
+}
+
+// PassToClient implements the visitor pattern for Nickname
+func (r Nickname) PassToClient(client Client) error {
+	return client.HandleNickname(r)
+}
+
 func readAddr(r io.Reader, addrLen byte, slice []byte, buf []byte) (net.Addr, error) {
 	addrBuf := make([]byte, 0, addrLen)
 	addrBuf = append(addrBuf, slice[:addrLen]...)
@@ -166,6 +190,45 @@ func readAddr(r io.Reader, addrLen byte, slice []byte, buf []byte) (net.Addr, er
 		return nil, err
 	}
 	return addr, nil
+}
+
+func readAddrAndString(r io.Reader, addrLen byte, slice []byte, buf []byte) (net.Addr, string, error) {
+	// We can't reuse the function because we need to modify slice
+	addrBuf := make([]byte, 0, addrLen)
+	addrBuf = append(addrBuf, slice[:addrLen]...)
+	slice = slice[addrLen:]
+	overwrite := byte(len(addrBuf)) < addrLen
+	for byte(len(addrBuf)) < addrLen {
+		amount, err := r.Read(buf)
+		if err != nil {
+			return nil, "", err
+		}
+		addrBuf = append(addrBuf, buf[:amount]...)
+	}
+	addrString := string(addrBuf[:addrLen])
+	if overwrite {
+		slice = addrBuf[addrLen:]
+	}
+	addr, err := net.ResolveTCPAddr("tcp", addrString)
+	if err != nil {
+		return nil, "", err
+	}
+	length := uint(slice[0]) << 24
+	length |= uint(slice[1]) << 16
+	length |= uint(slice[2]) << 8
+	length |= uint(slice[3])
+	slice = slice[4:]
+	stringBuf := make([]byte, 0, length)
+	stringBuf = append(stringBuf, slice...)
+	for uint(len(stringBuf)) < length {
+		amount, err := r.Read(buf)
+		if err != nil {
+			return nil, "", err
+		}
+		stringBuf = append(stringBuf, buf[:amount]...)
+	}
+	content := string(stringBuf[:length])
+	return addr, content, nil
 }
 
 // ReadMessage reads bytes into a Message
@@ -219,42 +282,19 @@ func ReadMessage(r io.Reader) (Message, error) {
 	case 7:
 		addrLen := slice[1]
 		slice = slice[2:]
-		// We can't reuse the function because we need to modify slice
-		addrBuf := make([]byte, 0, addrLen)
-		addrBuf = append(addrBuf, slice[:addrLen]...)
-		slice = slice[addrLen:]
-		overwrite := byte(len(addrBuf)) < addrLen
-		for byte(len(addrBuf)) < addrLen {
-			amount, err := r.Read(buf)
-			if err != nil {
-				return nil, err
-			}
-			addrBuf = append(addrBuf, buf[:amount]...)
-		}
-		addrString := string(addrBuf[:addrLen])
-		if overwrite {
-			slice = addrBuf[addrLen:]
-		}
-		addr, err := net.ResolveTCPAddr("tcp", addrString)
+		addr, content, err := readAddrAndString(r, addrLen, slice, buf)
 		if err != nil {
 			return nil, err
 		}
-		length := uint(slice[0]) << 24
-		length |= uint(slice[1]) << 16
-		length |= uint(slice[2]) << 8
-		length |= uint(slice[3])
-		slice = slice[4:]
-		stringBuf := make([]byte, 0, length)
-		stringBuf = append(stringBuf, slice...)
-		for uint(len(stringBuf)) < length {
-			amount, err := r.Read(buf)
-			if err != nil {
-				return nil, err
-			}
-			stringBuf = append(stringBuf, buf[:amount]...)
-		}
-		content := string(stringBuf[:length])
 		res = NewMessage{Sender: addr, Content: content}
+	case 8:
+		addrLen := slice[1]
+		slice = slice[2:]
+		addr, name, err := readAddrAndString(r, addrLen, slice, buf)
+		if err != nil {
+			return nil, err
+		}
+		res = Nickname{Sender: addr, Name: name}
 	}
 	return res, nil
 }

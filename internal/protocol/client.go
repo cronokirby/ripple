@@ -17,4 +17,6 @@ type Client interface {
 	HandleConfirmReferral() error
 	// Handle a NewMessage message
 	HandleNewMessage(NewMessage) error
+	// Handle a Nickname message
+	HandleNickname(Nickname) error
 }
