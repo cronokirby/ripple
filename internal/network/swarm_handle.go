@@ -74,6 +74,8 @@ type normalClient struct {
 	receiver protocol.ContentReceiver
 	// state represents the mutable state under a single lock
 	state *clientState
+	// nicks allows us to hold a map from address to nick
+	nicks *nickMap
 	// pool holds the connection pool for our peers
 	pool *peerPool
 	// latest has its own locking mechanism
@@ -302,6 +304,22 @@ func (client *originClient) HandleNewMessage(msg protocol.NewMessage) error {
 	return sendMessage(client.under.state.getSucc().conn, msg)
 }
 
+// HandleNickname allows us to change people's nicknames
+func (client *originClient) HandleNickname(msg protocol.Nickname) error {
+	if !isPredRole(client.origin) {
+		return fmt.Errorf(
+			"Unexpected Nickname %v %s",
+			msg,
+			client.fmtOrigin(),
+		)
+	}
+	if sameAddr(client.under.me, msg.Sender) {
+		return nil
+	}
+	client.under.nicks.set(msg.Sender, msg.Name)
+	return sendMessage(client.under.state.getSucc().conn, msg)
+}
+
 // joiningClient is a client trying to join a swarm
 type joiningClient struct {
 	referral net.Addr
@@ -334,6 +352,10 @@ func (client *joiningClient) HandleConfirmReferral() error {
 
 func (client *joiningClient) HandleNewMessage(msg protocol.NewMessage) error {
 	return fmt.Errorf("Unexpected NewMessage: %v", msg)
+}
+
+func (client *joiningClient) HandleNickname(msg protocol.Nickname) error {
+	return fmt.Errorf("Unexpected Nickname: %v", msg)
 }
 
 // joinSwarm can't and won't complete the logging and receiever fields of client
@@ -454,6 +476,10 @@ func (client *lonelyClient) HandleConfirmReferral() error {
 // HandleNewMessage is unexpected at this time
 func (client *lonelyClient) HandleNewMessage(protocol.NewMessage) error {
 	return fmt.Errorf("Unexpected NewMessage in lonelyClient")
+}
+
+func (client *lonelyClient) HandleNickname(protocol.Nickname) error {
+	return fmt.Errorf("Unexpected Nickname in lonelyClient")
 }
 
 func (client *lonelyClient) receiveMsg(conn net.Conn) error {
