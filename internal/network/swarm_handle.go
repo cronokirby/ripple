@@ -169,7 +169,7 @@ func (client *originClient) HandleJoinSwarm(msg protocol.JoinSwarm) error {
 		return err
 	}
 	newPred := protocol.NewPredecessor{Addr: msg.Addr}
-	if err := sendMessage(client.under.state.succ.conn, newPred); err != nil {
+	if err := sendMessage(client.under.state.getSucc().conn, newPred); err != nil {
 		return err
 	}
 	return nil
@@ -209,7 +209,7 @@ func (client *originClient) swapPredecessorsIfReady() error {
 		)
 	}
 	confirm := protocol.ConfirmReferral{}
-	if err := sendMessage(under.state.pred.conn, confirm); err != nil {
+	if err := sendMessage(under.state.getPred().conn, confirm); err != nil {
 		return err
 	}
 	under.pool.remove(under.state.pred, true)
@@ -300,7 +300,7 @@ func (client *originClient) HandleNewMessage(msg protocol.NewMessage) error {
 	if sameAddr(client.under.me, msg.Sender) {
 		return nil
 	}
-	client.under.receiver.ReceiveContent(msg.Content)
+	client.under.receiver.ReceiveContent(client.under.nicks.get(msg.Sender), msg.Content)
 	return sendMessage(client.under.state.getSucc().conn, msg)
 }
 
@@ -396,6 +396,7 @@ func (client *joiningClient) joinSwarm(log *log.Logger, start, me net.Addr) (*no
 		me:       me,
 		receiver: protocol.NilReceiver{},
 		pool:     makePeerPool(),
+		nicks:    makeNickMap(),
 		state:    state,
 		latest:   makeSyncConn(),
 	}
@@ -528,6 +529,7 @@ func (client *lonelyClient) startSwarm() (*normalClient, error) {
 		me:       client.me,
 		receiver: protocol.NilReceiver{},
 		pool:     makePeerPool(),
+		nicks:    makeNickMap(),
 		state:    state,
 		latest:   makeSyncConn(),
 	}
@@ -581,5 +583,5 @@ func (swarm *SwarmHandle) SetReceiver(receiver protocol.ContentReceiver) {
 func (swarm *SwarmHandle) SendContent(content string) {
 	msg := protocol.NewMessage{Sender: swarm.client.me, Content: content}
 	// ignore errors
-	sendMessage(swarm.client.state.succ.conn, msg)
+	sendMessage(swarm.client.state.getSucc().conn, msg)
 }

@@ -306,19 +306,19 @@ func ReadMessage(r io.Reader) (Message, error) {
 // update a gui or terminal based client.
 type ContentReceiver interface {
 	// ReceiveContent allows this object to react to some new content
-	ReceiveContent(string)
+	ReceiveContent(string, string)
 }
 
 // PrintReceiver is a ContentReceiver that just prints the received content
 type PrintReceiver struct{}
 
 // ReceiveContent just prints the new content we've received
-func (p PrintReceiver) ReceiveContent(content string) {
-	fmt.Println(content)
+func (p PrintReceiver) ReceiveContent(name, content string) {
+	fmt.Printf("%s: %s\n", name, content)
 }
 
 // NilReceiver simply does nothing on receieving content
 type NilReceiver struct{}
 
 // ReceiveContent does nothing
-func (NilReceiver) ReceiveContent(content string) {}
+func (NilReceiver) ReceiveContent(name, content string) {}

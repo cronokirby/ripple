@@ -11,6 +11,10 @@ type nickMap struct {
 	nicks sync.Map
 }
 
+func makeNickMap() *nickMap {
+	return &nickMap{}
+}
+
 // set will set the nickname for a given node
 func (nmap *nickMap) set(node net.Addr, name string) {
 	nmap.nicks.Store(node.String(), name)
