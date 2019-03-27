@@ -209,7 +209,7 @@ func (client *originClient) swapPredecessorsIfReady() error {
 		)
 	}
 	confirm := protocol.ConfirmReferral{}
-	if err := sendMessage(under.state.getPred().conn, confirm); err != nil {
+	if err := sendMessage(under.state.pred.conn, confirm); err != nil {
 		return err
 	}
 	under.pool.remove(under.state.pred, true)
