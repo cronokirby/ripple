@@ -585,3 +585,10 @@ func (swarm *SwarmHandle) SendContent(content string) {
 	// ignore errors
 	sendMessage(swarm.client.state.getSucc().conn, msg)
 }
+
+// ChangeNickname allows us to change our nickname in the rest of the swarm
+func (swarm *SwarmHandle) ChangeNickname(name string) {
+	msg := protocol.Nickname{Sender: swarm.client.me, Name: name}
+	// ignore errors
+	sendMessage(swarm.client.state.getSucc().conn, msg)
+}

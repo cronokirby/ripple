@@ -16,7 +16,13 @@ func interact(swarm *network.SwarmHandle) {
 	for {
 		scanner.Scan()
 		text := scanner.Text()
-		swarm.SendContent(text)
+		var name string
+		_, err := fmt.Sscanf(text, "!nick %s", &name)
+		if err == nil {
+			swarm.ChangeNickname(name)
+		} else {
+			swarm.SendContent(text)
+		}
 	}
 }
 

@@ -161,7 +161,7 @@ type Nickname struct {
 // MessageBytes serializes a Nickname
 func (r Nickname) MessageBytes() []byte {
 	senderString := r.Sender.String()
-	bytes := []byte{7, byte(len(senderString))}
+	bytes := []byte{8, byte(len(senderString))}
 	bytes = append(bytes, []byte(senderString)...)
 	len := len(r.Name)
 	bytes = append(bytes, byte(len>>24), byte(len>>16), byte(len>>8), byte(len))
