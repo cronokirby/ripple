@@ -4,6 +4,11 @@ a node sends a **NewMessage** message to its Sucessor.
 When a node receieves a **NewMessage** from its Predecessor that it didn't
 create, it forwards it to its Sucessor. This means that a message will eventually round-trip back to its sender, closing the loop.
 
+## Changing Nicknames
+In order to announce a change in preferred nickname, a node can send
+a **Nickname** message to its successor. This message works the
+same way as **NewMessage**.
+
 ## Connecting to a swarm
 Connecting to a swarm happens in 5 steps:
 

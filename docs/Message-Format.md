@@ -61,3 +61,12 @@ Referral contains the address of the node to send a **ConfirmPredecessor** to
 | Addr       | AddrLength | The address for this node |
 | Length     | 4      | Unsigned 32 bit integer, length of following field |
 | Content    | Length | UTF-8 string with message content |
+
+## Nickname
+| Field      | Length | Description           |
+| ---------- | ------ | --------------------- |
+| Type       | 1      | 0x08 for Nickname   |
+| AddrLength | 1      | Unsigned byte, how long the following field is |
+| Addr       | AddrLength | The address for this node |
+| Length     | 4      | Unsigned 32 bit integer, length of following field |
+| Name    | Length | UTF-8 string with the new name |
