@@ -20,7 +20,7 @@ func startUI(swarm *network.SwarmHandle) {
 }
 
 func main() {
-	logger := log.New(os.Stdout, "", log.Flags())
+	logger := log.New(os.Stderr, "", log.Flags())
 	switch kingpin.MustParse(app.App.Parse(os.Args[1:])) {
 	case app.Start.FullCommand():
 		me, err := net.ResolveTCPAddr("tcp", *app.StartAddr)
