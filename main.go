@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 
+	"github.com/alecthomas/kingpin"
+	"github.com/cronokirby/ripple/internal/app"
 	"github.com/cronokirby/ripple/internal/network"
 	"github.com/cronokirby/ripple/internal/protocol"
 )
@@ -27,20 +29,10 @@ func interact(swarm *network.SwarmHandle) {
 }
 
 func main() {
-	args := os.Args
-	argLen := len(args)
-	if argLen < 2 {
-		fmt.Println("Insufficient arguments")
-		os.Exit(1)
-	}
 	logger := log.New(os.Stdout, "", log.Flags())
-	switch args[1] {
-	case "listen":
-		if argLen < 3 {
-			fmt.Println("Insufficient arguments")
-			os.Exit(1)
-		}
-		me, err := net.ResolveTCPAddr("tcp", args[2])
+	switch kingpin.MustParse(app.App.Parse(os.Args[1:])) {
+	case app.Start.FullCommand():
+		me, err := net.ResolveTCPAddr("tcp", *app.StartAddr)
 		if err != nil {
 			logger.Fatalln("Failed to resolve own address: ", err)
 		}
@@ -51,16 +43,12 @@ func main() {
 		}
 		swarm.SetReceiver(protocol.PrintReceiver{})
 		interact(swarm)
-	case "connect":
-		if argLen < 4 {
-			fmt.Println("Insufficient arguments")
-			os.Exit(1)
-		}
-		me, err := net.ResolveTCPAddr("tcp", args[2])
+	case app.Connect.FullCommand():
+		me, err := net.ResolveTCPAddr("tcp", *app.ConnectListenAddr)
 		if err != nil {
 			logger.Fatalln("Failed to resolve own address: ", err)
 		}
-		them, err := net.ResolveTCPAddr("tcp", args[3])
+		them, err := net.ResolveTCPAddr("tcp", *app.ConnectAddr)
 		if err != nil {
 			logger.Fatalln("Failed to resolve peer address: ", err)
 		}
@@ -71,7 +59,5 @@ func main() {
 		}
 		swarm.SetReceiver(protocol.PrintReceiver{})
 		interact(swarm)
-	default:
-		fmt.Println("Unknown command")
 	}
 }
