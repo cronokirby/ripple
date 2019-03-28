@@ -24,6 +24,9 @@ var (
 	ConnectListenAddr = Connect.Arg("listen-addr", "The address to listen on once connected").Required().String()
 	// ConnectAddr is the address to connect to
 	ConnectAddr = Connect.Arg("connect-addr", "The address to connect to").Required().String()
+
+	// TUI allows us to start the interactive terminal ui instead
+	TUI = App.Flag("tui", "Run the application in terminal UI mode").Bool()
 )
 
 // Interact allows us to interact in a terminal way with a SwarmHandle

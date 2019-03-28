@@ -11,6 +11,14 @@ import (
 	"github.com/cronokirby/ripple/internal/protocol"
 )
 
+func startUI(swarm *network.SwarmHandle) {
+	if *app.TUI {
+		app.RunTUI(swarm)
+	} else {
+		app.Interact(swarm)
+	}
+}
+
 func main() {
 	logger := log.New(os.Stdout, "", log.Flags())
 	switch kingpin.MustParse(app.App.Parse(os.Args[1:])) {
@@ -25,7 +33,7 @@ func main() {
 			logger.Fatalln("Failed to join swarm: ", err)
 		}
 		swarm.SetReceiver(protocol.PrintReceiver{})
-		app.Interact(swarm)
+		startUI(swarm)
 	case app.Connect.FullCommand():
 		me, err := net.ResolveTCPAddr("tcp", *app.ConnectListenAddr)
 		if err != nil {
@@ -41,6 +49,6 @@ func main() {
 			logger.Fatalln("Failed to join swarm: ", err)
 		}
 		swarm.SetReceiver(protocol.PrintReceiver{})
-		app.Interact(swarm)
+		startUI(swarm)
 	}
 }
