@@ -16,11 +16,14 @@ type gui struct {
 }
 
 func (g *gui) ReceiveContent(user, content string) {
-	msg, err := g.View("messages")
-	if err != nil {
-		return
-	}
-	fmt.Fprintf(msg, "%s: %s\n", user, content)
+	g.Update(func(g *gocui.Gui) error {
+		msg, err := g.View("messages")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(msg, "%s: %s\n", user, content)
+		return nil
+	})
 }
 
 func wrapSwarm(swarm *network.SwarmHandle, f func(*gui) error) func(*gocui.Gui) error {
@@ -44,7 +47,7 @@ func simpleEditor(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
 }
 
 func inputView(g *gui, maxX, maxY int) error {
-	if v, err := g.SetView("input", 0, 5*maxY/6+2, maxX-1, maxY-1); err != nil {
+	if v, err := g.SetView("input", 0, 5*maxY/6+1, maxX-1, maxY-1); err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
@@ -100,7 +103,7 @@ func RunTUI(swarm *network.SwarmHandle) {
 
 func layout(g *gui) error {
 	maxX, maxY := g.Size()
-	if v, err := g.SetView("messages", 0, 0, maxX-1, 5*maxY/6+1); err != nil {
+	if v, err := g.SetView("messages", 0, 0, maxX-1, 5*maxY/6); err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
