@@ -28,6 +28,7 @@ The Ping message contains no information, so it only has a type tag.
 
 ## Referral
 Referral contains the address of the node to send a **ConfirmPredecessor** to
+
 | Field     | Length | Description           |
 | --------- | ------ | --------------------- |
 | Type      | 1      | 0x03 for Referral     |
